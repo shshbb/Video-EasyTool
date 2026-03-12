@@ -402,8 +402,8 @@ struct ContentView: View {
                     }
 
                     formRow("API Key") {
-                        TextField("sk-...", text: $vm.settings.openAIAPIKey)
-                            .textFieldStyle(.roundedBorder)
+                        SecureInputField(placeholder: "sk-...", text: $vm.settings.openAIAPIKey)
+                            .frame(maxWidth: .infinity)
                     }
 
                     formRow(ui("翻译模型", "Translation Model")) {

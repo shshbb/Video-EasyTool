@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct ProcessRunner {
     static func run(
@@ -29,9 +30,7 @@ struct ProcessRunner {
                 return process.terminationStatus
             }.value
         }, onCancel: {
-            if process.isRunning {
-                process.terminate()
-            }
+            terminateProcessTree(process)
         })
 
         let output = await stdoutTask
@@ -69,13 +68,71 @@ struct ProcessRunner {
             throw AppError.toolNotFound(tool)
         }
 
-        let searchPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-        for path in searchPaths {
+        for path in toolSearchPaths() {
             let candidate = "\(path)/\(tool)"
             if FileManager.default.isExecutableFile(atPath: candidate) {
                 return candidate
             }
         }
         throw AppError.toolNotFound(tool)
+    }
+
+    static func terminateProcessTree(_ process: Process) {
+        terminateProcessTree(pid: process.processIdentifier)
+    }
+
+    static func terminateProcessTree(pid: Int32) {
+        guard pid > 0 else { return }
+
+        for child in childPIDs(of: pid) {
+            terminateProcessTree(pid: child)
+        }
+
+        _ = kill(pid, SIGTERM)
+        usleep(250_000)
+        if kill(pid, 0) == 0 {
+            _ = kill(pid, SIGKILL)
+        }
+    }
+
+    private static func childPIDs(of pid: Int32) -> [Int32] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-P", "\(pid)"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return []
+        }
+
+        guard process.terminationStatus == 0 else { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(decoding: data, as: UTF8.self)
+        return output
+            .split(whereSeparator: \.isNewline)
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    private static func toolSearchPaths() -> [String] {
+        var paths: [String] = []
+
+        if let envPath = ProcessInfo.processInfo.environment["PATH"] {
+            paths.append(contentsOf: envPath.split(separator: ":").map(String.init))
+        }
+
+        paths.append(contentsOf: ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])
+
+        var seen = Set<String>()
+        return paths.filter { path in
+            guard !path.isEmpty, !seen.contains(path) else { return false }
+            seen.insert(path)
+            return true
+        }
     }
 }
