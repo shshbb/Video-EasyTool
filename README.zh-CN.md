@@ -18,8 +18,30 @@
 ## 环境要求
 
 - macOS 14 及以上
-- Xcode Command Line Tools
-- Homebrew
+
+## 运行方式
+
+对于大多数用户，推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载已经打包好的安装包。源码编译和运行更适合开发、调试或参与项目贡献，并不建议作为日常安装和使用方式。
+
+安装包用户：
+
+- 推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载最新的 `.dmg`
+- 应用本身面向 `macOS 14+`
+- 视频下载、转码和本地转录仍然依赖目标机器上已安装的外部工具：
+  - `yt-dlp`
+  - `ffmpeg`
+  - `whisper-cpp` 提供的 `whisper-cli`
+
+如果你要使用 Ollama 作为本地翻译后端：
+
+- 先安装 Ollama
+- 确保 Ollama 后台服务正在运行
+- 例如可以通过终端手动执行 `ollama serve`
+
+如果你是从源码构建：
+
+- 需要 Xcode Command Line Tools
+- 需要 Homebrew
 
 安装基础依赖：
 
@@ -27,16 +49,11 @@
 brew install yt-dlp ffmpeg whisper-cpp
 ```
 
-如果你要使用本地字幕翻译，再安装并启动 Ollama：
+如需使用 Ollama 翻译，可额外安装：
 
 ```bash
 brew install ollama
-ollama serve
 ```
-
-## 运行方式
-
-对于大多数用户，推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载已经打包好的安装包。源码编译和运行更适合开发、调试或参与项目贡献，并不建议作为日常安装和使用方式。
 
 开发环境运行：
 
@@ -52,10 +69,11 @@ swift build -c release
 
 ## 打包产物
 
-应用 bundle 名称为 `VideoEasyTool.app`。
+推荐优先使用 `VideoEasyTool.dmg` 作为安装包。
 
 当前打包产物输出到：
 
+- `dist/VideoEasyTool.dmg`
 - `dist/VideoEasyTool.app`
 - `dist/VideoEasyTool.zip`
 
