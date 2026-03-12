@@ -15,6 +15,13 @@ enum TranslationMode: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum DisplayLanguage: String, CaseIterable, Identifiable, Codable {
+    case simplifiedChinese = "简体中文"
+    case english = "English"
+
+    var id: String { rawValue }
+}
+
 enum TaskKind: String, Equatable {
     case downloadVideo
     case transcodeVideo
@@ -96,6 +103,7 @@ struct AppSettings: Codable {
     var targetLanguage: TargetLanguage
     var provider: TranslationProvider
     var translationMode: TranslationMode
+    var displayLanguage: DisplayLanguage
 
     enum CodingKeys: String, CodingKey {
         case outputDirectory
@@ -113,6 +121,7 @@ struct AppSettings: Codable {
         case targetLanguage
         case provider
         case translationMode
+        case displayLanguage
     }
 
     init(
@@ -129,7 +138,8 @@ struct AppSettings: Codable {
         ollamaModel: String,
         targetLanguage: TargetLanguage,
         provider: TranslationProvider,
-        translationMode: TranslationMode
+        translationMode: TranslationMode,
+        displayLanguage: DisplayLanguage
     ) {
         self.globalOutputDirectory = globalOutputDirectory
         self.downloadOutputDirectory = downloadOutputDirectory
@@ -145,6 +155,7 @@ struct AppSettings: Codable {
         self.targetLanguage = targetLanguage
         self.provider = provider
         self.translationMode = translationMode
+        self.displayLanguage = displayLanguage
     }
 
     init(from decoder: any Decoder) throws {
@@ -163,6 +174,7 @@ struct AppSettings: Codable {
         self.ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? AppSettings.default.ollamaModel
         self.provider = try container.decodeIfPresent(TranslationProvider.self, forKey: .provider) ?? AppSettings.default.provider
         self.translationMode = try container.decodeIfPresent(TranslationMode.self, forKey: .translationMode) ?? .balanced
+        self.displayLanguage = try container.decodeIfPresent(DisplayLanguage.self, forKey: .displayLanguage) ?? .simplifiedChinese
 
         if let model = try? container.decode(TranscriptionModel.self, forKey: .transcriptionModel) {
             self.transcriptionModel = model
@@ -199,6 +211,7 @@ struct AppSettings: Codable {
         try container.encode(targetLanguage, forKey: .targetLanguage)
         try container.encode(provider, forKey: .provider)
         try container.encode(translationMode, forKey: .translationMode)
+        try container.encode(displayLanguage, forKey: .displayLanguage)
     }
 
     static let `default` = AppSettings(
@@ -215,7 +228,8 @@ struct AppSettings: Codable {
         ollamaModel: "qwen2.5:7b",
         targetLanguage: .simplifiedChinese,
         provider: .openAICompatible,
-        translationMode: .balanced
+        translationMode: .balanced,
+        displayLanguage: .simplifiedChinese
     )
 }
 
