@@ -2,6 +2,8 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
+For most users, the recommended way to install Video Easy Tool is to download the packaged installer from [Releases](https://github.com/shshbb/Video-EasyTool/releases). Building and running from source is mainly intended for development, debugging, or contributing, and is not the recommended installation path for everyday use.
+
 A native macOS app for downloading YouTube videos, transcribing subtitles with local Whisper models, translating subtitles with OpenAI-compatible APIs or Ollama, and exporting bilingual subtitle files.
 
 ## Features
