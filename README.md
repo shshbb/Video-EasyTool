@@ -1,5 +1,7 @@
 # Video Easy Tool
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 A native macOS app for downloading YouTube videos, transcribing subtitles with local Whisper models, translating subtitles with OpenAI-compatible APIs or Ollama, and exporting bilingual subtitle files.
 
 ## Features
