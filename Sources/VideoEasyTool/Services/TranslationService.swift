@@ -37,67 +37,7 @@ final class OpenAICompatibleTranslator: TranslationService {
     }
 
     func translateBatch(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
-        if usesQwenMTProtocol {
-            return try await translateBatchWithQwenMT(sourceTexts, targetLanguage: targetLanguage)
-        }
         return try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, depth: 0)
-    }
-
-    private var usesQwenMTProtocol: Bool {
-        let m = model.lowercased()
-        return m.contains("qwen-mt")
-    }
-
-    private func translateBatchWithQwenMT(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
-        if sourceTexts.isEmpty { return [] }
-        let target = qwenMTLanguageName(targetLanguage)
-        var results: [String] = []
-        results.reserveCapacity(sourceTexts.count)
-
-        for text in sourceTexts {
-            let body: [String: Any] = [
-                "model": model,
-                "messages": [
-                    ["role": "user", "content": text]
-                ],
-                "translation_options": [
-                    "source_lang": "auto",
-                    "target_lang": target
-                ]
-            ]
-            let data = try await postWithRetry(body: body)
-            var translated = try parseSingleTranslation(data: data)
-            // If the model returns near-identical source text, retry once with explicit user prompt.
-            if shouldRetryUntranslated(source: text, translated: translated, targetLanguage: targetLanguage) {
-                let prompt = """
-                你是字幕翻译助手。请把下面文本翻译成\(target)，只输出译文，不要解释，不要补充，不要保留原文：
-                \(text)
-                """
-                let retryBody: [String: Any] = [
-                    "model": model,
-                    "messages": [
-                        ["role": "user", "content": prompt]
-                    ]
-                ]
-                let retryData = try await postWithRetry(body: retryBody)
-                translated = try parseSingleTranslation(data: retryData)
-            }
-            results.append(translated)
-        }
-        return results
-    }
-
-    private func qwenMTLanguageName(_ code: String) -> String {
-        let lower = code.lowercased()
-        if lower.hasPrefix("zh") { return "Chinese" }
-        if lower.hasPrefix("en") { return "English" }
-        if lower.hasPrefix("ja") { return "Japanese" }
-        if lower.hasPrefix("ko") { return "Korean" }
-        if lower.hasPrefix("fr") { return "French" }
-        if lower.hasPrefix("de") { return "German" }
-        if lower.hasPrefix("es") { return "Spanish" }
-        if lower.hasPrefix("vi") { return "Vietnamese" }
-        return code
     }
 
     private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, depth: Int) async throws -> [String] {
@@ -163,8 +103,8 @@ final class OpenAICompatibleTranslator: TranslationService {
     private func postWithRetry(body: [String: Any]) async throws -> Data {
         let maxAttempts = 8
         var attempt = 0
-        var backoff: TimeInterval = usesQwenMTProtocol ? 1.6 : 1.2
-        let minInterval: TimeInterval = usesQwenMTProtocol ? 1.25 : 0.9
+        var backoff: TimeInterval = 1.2
+        let minInterval: TimeInterval = 0.9
 
         while true {
             attempt += 1
@@ -293,55 +233,6 @@ final class OpenAICompatibleTranslator: TranslationService {
             throw AppError.parseFailed("翻译条数不一致: got=\(translations.count), expected=\(expectedCount)")
         }
         return translations
-    }
-
-    private func parseSingleTranslation(data: Data) throws -> String {
-        guard
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = root["choices"] as? [[String: Any]],
-            let message = choices.first?["message"] as? [String: Any],
-            let content = message["content"] as? String
-        else {
-            throw AppError.parseFailed("翻译响应格式不正确")
-        }
-        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            throw AppError.parseFailed("翻译响应为空")
-        }
-        return text
-    }
-
-    private func shouldRetryUntranslated(source: String, translated: String, targetLanguage: String) -> Bool {
-        let src = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dst = translated.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !src.isEmpty, !dst.isEmpty else { return false }
-        guard src.count >= 6 else { return false }
-        guard src == dst else { return false }
-
-        let target = targetLanguage.lowercased()
-        if target.hasPrefix("zh"), containsCJK(dst) {
-            return false
-        }
-        if target.hasPrefix("en"), containsMostlyLatin(dst) {
-            return false
-        }
-        return true
-    }
-
-    private func containsCJK(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            (0x4E00...0x9FFF).contains(scalar.value) ||
-            (0x3400...0x4DBF).contains(scalar.value)
-        }
-    }
-
-    private func containsMostlyLatin(_ text: String) -> Bool {
-        let scalars = text.unicodeScalars.filter { !$0.properties.isWhitespace }
-        guard !scalars.isEmpty else { return false }
-        let latin = scalars.filter {
-            (0x0041...0x005A).contains($0.value) || (0x0061...0x007A).contains($0.value)
-        }.count
-        return Double(latin) / Double(scalars.count) >= 0.55
     }
 
     private func isFormatMismatch(_ error: Error) -> Bool {
