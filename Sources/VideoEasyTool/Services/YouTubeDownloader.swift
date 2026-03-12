@@ -14,6 +14,9 @@ struct YouTubeDownloader {
         onProgress: ((Double) -> Void)? = nil,
         onProcessStart: ((Process) -> Void)? = nil
     ) async throws -> DownloadResult {
+        try ProcessRunner.requireTool("yt-dlp")
+        try ProcessRunner.requireTool("ffmpeg")
+
         let outputTemplate = "\(outputDirectory)/%(title)s.%(ext)s"
         var args: [String] = [
             "-f", "bv*+ba/b",
@@ -40,11 +43,13 @@ struct YouTubeDownloader {
 
         if let mergedPath = parseMergedOutputPath(from: runOutput),
            FileManager.default.fileExists(atPath: mergedPath) {
+            cleanupIntermediateFiles(finalPath: mergedPath)
             let title = URL(fileURLWithPath: mergedPath).deletingPathExtension().lastPathComponent
             return DownloadResult(videoPath: mergedPath, title: title)
         }
 
         if let latestPath = latestVideoFile(in: outputDirectory) {
+            cleanupIntermediateFiles(finalPath: latestPath)
             let title = URL(fileURLWithPath: latestPath).deletingPathExtension().lastPathComponent
             return DownloadResult(videoPath: latestPath, title: title)
         }
@@ -77,6 +82,7 @@ struct YouTubeDownloader {
 
     private func latestVideoFile(in directory: String) -> String? {
         let videoExts = Set(["mp4", "mkv", "webm", "mov", "m4v"])
+        let preferredOrder = ["mp4", "mkv", "mov", "m4v", "webm"]
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(
             at: URL(fileURLWithPath: directory),
@@ -91,10 +97,43 @@ struct YouTubeDownloader {
         }
 
         let sorted = candidates.sorted { lhs, rhs in
+            let lExt = lhs.pathExtension.lowercased()
+            let rExt = rhs.pathExtension.lowercased()
+            let lRank = preferredOrder.firstIndex(of: lExt) ?? preferredOrder.count
+            let rRank = preferredOrder.firstIndex(of: rExt) ?? preferredOrder.count
+            if lRank != rRank {
+                return lRank < rRank
+            }
             let lDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let rDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             return lDate > rDate
         }
         return sorted.first?.path
+    }
+
+    private func cleanupIntermediateFiles(finalPath: String) {
+        let finalURL = URL(fileURLWithPath: finalPath)
+        let directory = finalURL.deletingLastPathComponent()
+        let baseName = finalURL.deletingPathExtension().lastPathComponent
+        let finalFilename = finalURL.lastPathComponent
+
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for item in items {
+            let filename = item.lastPathComponent
+            guard filename != finalFilename else { continue }
+            guard item.deletingPathExtension().lastPathComponent == baseName else { continue }
+
+            let ext = item.pathExtension.lowercased()
+            if ["webm", "m4a", "mp3", "opus", "part", "temp"].contains(ext) || filename.contains(".f") {
+                try? FileManager.default.removeItem(at: item)
+            }
+        }
     }
 }

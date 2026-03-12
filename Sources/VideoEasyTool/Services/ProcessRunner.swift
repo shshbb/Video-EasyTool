@@ -2,6 +2,10 @@ import Foundation
 import Darwin
 
 struct ProcessRunner {
+    static func requireTool(_ tool: String) throws {
+        _ = try findTool(tool)
+    }
+
     static func run(
         _ launchPath: String,
         args: [String],
