@@ -1,8 +1,8 @@
 # YTDMacApp
 
-原生 macOS (SwiftUI) 应用骨架，支持:
+原生 macOS (SwiftUI) 应用，支持:
 - 下载 YouTube 视频 (`yt-dlp`)
-- AI 转录字幕 (OpenAI 兼容 API)
+- 本地 Whisper 转录字幕
 - AI 翻译双语字幕
   - 在线: OpenAI 兼容格式 (`/v1/chat/completions`)
   - 本地: Ollama (`/api/chat`)
@@ -14,7 +14,7 @@
 2. 如果用本地翻译，安装并启动 Ollama:
    - `brew install ollama`
    - `ollama serve`
-   - `ollama pull qwen2.5:7b`
+   - 拉取任意你想用于字幕翻译的本地模型
 
 ## 2. 运行
 
@@ -26,7 +26,8 @@ swift run
 
 1. 全局设置
    - 用 Finder 按钮选择输出目录
-   - 配置 OpenAI 兼容 API 地址和 Key（用于转录）
+   - 转录页面选择本地 Whisper 模型，并下载到应用内部目录
+   - 翻译页面配置 OpenAI 兼容 API 地址和 Key，或使用 Ollama
    - 选择翻译引擎（OpenAI Compatible / Ollama）
    - 目标语言使用“语言名称”下拉框选择
 2. 步骤 1：下载视频
@@ -46,7 +47,6 @@ swift run
 ## 4. 接口兼容要求
 
 ### OpenAI 兼容
-- 转录接口: `POST /v1/audio/transcriptions`
 - 翻译接口: `POST /v1/chat/completions`
 - 鉴权: `Authorization: Bearer <API_KEY>`
 
@@ -56,6 +56,5 @@ swift run
 
 ## 5. 已知限制
 
-- 当前版本会把视频文件直接上传做转录，超大视频会比较慢。
 - 翻译采用批量编号行解析，如果模型返回格式不稳定会报条数不一致。
 - 某些异常 SRT（格式损坏）可能解析失败。
