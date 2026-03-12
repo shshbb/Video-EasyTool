@@ -50,7 +50,7 @@ final class AppViewModel: ObservableObject {
         userCancelledTask = true
         activeTask?.cancel()
         if let process = activeProcess, process.isRunning {
-            process.terminate()
+            ProcessRunner.terminateProcessTree(process)
         }
         cleanupTaskArtifacts()
         appendRawLog("\n[INFO] \(self.ui("任务终止请求已发送，缓存与临时文件已清理。", "Stop request sent. Cache and temporary files were cleaned."))\n")
@@ -62,7 +62,7 @@ final class AppViewModel: ObservableObject {
         userCancelledTask = true
         activeTask?.cancel()
         if let process = activeProcess, process.isRunning {
-            process.terminate()
+            ProcessRunner.terminateProcessTree(process)
         }
     }
 
