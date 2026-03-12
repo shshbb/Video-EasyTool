@@ -43,11 +43,11 @@ struct WindowCloseGuard: NSViewRepresentable {
             guard viewModel.isRunning else { return true }
 
             let alert = NSAlert()
-            alert.messageText = "任务正在运行"
-            alert.informativeText = "当前有任务还在执行。是否终止任务并退出应用？"
+            alert.messageText = viewModel.ui("任务正在运行", "Task is running")
+            alert.informativeText = viewModel.ui("当前有任务还在执行。是否终止任务并退出应用？", "A task is still running. Stop it and quit the app?")
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "终止并退出")
-            alert.addButton(withTitle: "继续运行")
+            alert.addButton(withTitle: viewModel.ui("终止并退出", "Stop and Quit"))
+            alert.addButton(withTitle: viewModel.ui("继续运行", "Keep Running"))
 
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
