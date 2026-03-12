@@ -18,6 +18,28 @@ A native macOS app for downloading YouTube videos, transcribing subtitles with l
 ## Requirements
 
 - macOS 14+
+
+## Run
+
+For most users, the recommended way to install Video Easy Tool is to download the packaged installer from [Releases](https://github.com/shshbb/Video-EasyTool/releases). Building and running from source is mainly intended for development, debugging, or contributing, and is not the recommended installation path for everyday use.
+
+Packaged app users:
+
+- Download the latest `.dmg` from [Releases](https://github.com/shshbb/Video-EasyTool/releases)
+- The app itself targets `macOS 14+`
+- Video download, transcoding, and local transcription still rely on external tools installed on the machine:
+  - `yt-dlp`
+  - `ffmpeg`
+  - `whisper-cli` from `whisper-cpp`
+
+If you want local subtitle translation with Ollama:
+
+- Install Ollama
+- Make sure the Ollama background service is running
+- A manual terminal start such as `ollama serve` is one valid way to start it
+
+For building from source:
+
 - Xcode Command Line Tools
 - Homebrew
 
@@ -27,14 +49,11 @@ Install required tools:
 brew install yt-dlp ffmpeg whisper-cpp
 ```
 
-If you want local subtitle translation, install and start Ollama:
+Optional for Ollama translation:
 
 ```bash
 brew install ollama
-ollama serve
 ```
-
-## Run
 
 Development:
 
@@ -50,10 +69,11 @@ swift build -c release
 
 ## Packaging
 
-The app bundle name is `VideoEasyTool.app`.
+The recommended installer artifact is `VideoEasyTool.dmg`.
 
 Current packaged artifacts are written to:
 
+- `dist/VideoEasyTool.dmg`
 - `dist/VideoEasyTool.app`
 - `dist/VideoEasyTool.zip`
 
