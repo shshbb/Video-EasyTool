@@ -37,6 +37,7 @@ final class AppViewModel: ObservableObject {
         self.settings = settingsStore.load()
         normalizeSettingsToRelativePaths()
         ensureAppInternalDirectories()
+        self.modelStatusText = self.ui("未检测", "Not checked")
     }
 
     func saveSettings() {
@@ -45,19 +46,19 @@ final class AppViewModel: ObservableObject {
 
     func cancelCurrentTask() {
         guard isRunning else { return }
-        stopOllamaIfNeeded(trigger: "任务终止")
+        stopOllamaIfNeeded(trigger: self.ui("任务终止", "Task stopped"))
         userCancelledTask = true
         activeTask?.cancel()
         if let process = activeProcess, process.isRunning {
             process.terminate()
         }
         cleanupTaskArtifacts()
-        appendRawLog("\n[INFO] 任务终止请求已发送，缓存与临时文件已清理。\n")
+        appendRawLog("\n[INFO] \(self.ui("任务终止请求已发送，缓存与临时文件已清理。", "Stop request sent. Cache and temporary files were cleaned."))\n")
     }
 
     func handleAppTermination() {
         guard isRunning else { return }
-        stopOllamaIfNeeded(trigger: "应用退出")
+        stopOllamaIfNeeded(trigger: self.ui("应用退出", "App exit"))
         userCancelledTask = true
         activeTask?.cancel()
         if let process = activeProcess, process.isRunning {
@@ -67,11 +68,11 @@ final class AppViewModel: ObservableObject {
 
     func downloadVideo() {
         guard !youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n请输入 YouTube 链接")
+            logs.append("\n\(self.ui("请输入 YouTube 链接", "Please enter a YouTube URL"))")
             return
         }
 
-        runTask(kind: .downloadVideo, startMessage: "开始下载视频") {
+        runTask(kind: .downloadVideo, startMessage: self.ui("开始下载视频", "Starting video download")) {
             let cacheDir = try self.createTaskCacheDirectory(prefix: "download")
             self.registerCleanupDirectory(cacheDir)
 
@@ -101,21 +102,21 @@ final class AppViewModel: ObservableObject {
                 self.selectedTranscodeInputPath = result.videoPath
             }
             self.taskProgress = 1
-            await self.log("下载完成: \(result.videoPath)")
+            await self.log("\(self.ui("下载完成", "Download completed")): \(result.videoPath)")
         }
     }
 
     func transcodeVideo() {
         guard !selectedTranscodeInputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n请先选择要转码的视频文件")
+            logs.append("\n\(self.ui("请先选择要转码的视频文件", "Please choose a video file to transcode"))")
             return
         }
         guard let crf = Int(selectedTranscodeCRF), (0...51).contains(crf) else {
-            logs.append("\nCRF 请输入 0-51 之间的整数")
+            logs.append("\n\(self.ui("CRF 请输入 0-51 之间的整数", "Please enter an integer between 0 and 51 for CRF"))")
             return
         }
 
-        runTask(kind: .transcodeVideo, startMessage: "开始视频转码") {
+        runTask(kind: .transcodeVideo, startMessage: self.ui("开始视频转码", "Starting video transcode")) {
             let inputURL = URL(fileURLWithPath: self.selectedTranscodeInputPath)
             let baseName = inputURL.deletingPathExtension().lastPathComponent
             let outputPath = "\(self.resolveAppPath(self.settings.transcodeOutputDirectory))/\(baseName)_transcoded.\(self.selectedTranscodeFormat)"
@@ -145,20 +146,20 @@ final class AppViewModel: ObservableObject {
 
             self.unregisterCleanupFile(outputPath)
             self.taskProgress = 1
-            await self.log("转码完成: \(outputPath)")
+            await self.log("\(self.ui("转码完成", "Transcode completed")): \(outputPath)")
         }
     }
 
     func transcribeVideo() {
         guard !selectedVideoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n请先选择视频文件")
+            logs.append("\n\(self.ui("请先选择视频文件", "Please choose a video file first"))")
             return
         }
 
-        runTask(kind: .transcribeVideo, startMessage: "开始转录字幕") {
+        runTask(kind: .transcribeVideo, startMessage: self.ui("开始转录字幕", "Starting subtitle transcription")) {
             let modelPath = self.localModelPath(for: self.settings.transcriptionModel)
             guard FileManager.default.fileExists(atPath: modelPath) else {
-                throw AppError.ioFailed("未检测到本地模型，请先下载: \(self.settings.transcriptionModel.label)")
+                throw AppError.ioFailed("\(self.ui("未检测到本地模型，请先下载", "Local model not found, please download it first")): \(self.settings.transcriptionModel.label)")
             }
 
             let baseName = URL(fileURLWithPath: self.selectedVideoPath).deletingPathExtension().lastPathComponent
@@ -195,19 +196,19 @@ final class AppViewModel: ObservableObject {
             self.taskProgress = 1
             self.unregisterCleanupFile(outputPath)
             if cleaned.removedCount > 0 {
-                await self.log("转录清洗: 已移除重复/异常片段 \(cleaned.removedCount) 条")
+                await self.log("\(self.ui("转录清洗", "Transcription cleanup")): \(self.ui("已移除重复/异常片段", "Removed duplicate/invalid segments")) \(cleaned.removedCount) \(self.ui("条", "items"))")
             }
-            await self.log("转录完成: \(outputPath)")
+            await self.log("\(self.ui("转录完成", "Transcription completed")): \(outputPath)")
         }
     }
 
     func translateSubtitle() {
         guard !selectedSubtitlePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n请先选择字幕文件")
+            logs.append("\n\(self.ui("请先选择字幕文件", "Please choose a subtitle file first"))")
             return
         }
 
-        runTask(kind: .translateSubtitle, startMessage: "开始翻译字幕") {
+        runTask(kind: .translateSubtitle, startMessage: self.ui("开始翻译字幕", "Starting subtitle translation")) {
             await MainActor.run {
                 self.taskProgress = 0
             }
@@ -228,7 +229,7 @@ final class AppViewModel: ObservableObject {
                 )
             let totalBatches = max(1, Int(ceil(Double(texts.count) / Double(batchSize))))
             var translated: [String] = []
-            await self.log("翻译批次规划: \(totalBatches) 批，每批最多 \(batchSize) 条")
+            await self.log("\(self.ui("翻译批次规划", "Translation batching")): \(totalBatches) \(self.ui("批，每批最多", "batches, up to")) \(batchSize) \(self.ui("条", "items"))")
 
             for batchIndex in 0..<totalBatches {
                 let start = batchIndex * batchSize
@@ -249,7 +250,7 @@ final class AppViewModel: ObservableObject {
                 await MainActor.run {
                     self.taskProgress = ratio * 0.95
                 }
-                await self.log("翻译进度: \(batchIndex + 1)/\(totalBatches)")
+                await self.log("\(self.ui("翻译进度", "Translation progress")): \(batchIndex + 1)/\(totalBatches)")
             }
 
             let bilingual = try self.subtitleService.buildBilingualCues(original: cues, translatedTexts: translated)
@@ -262,12 +263,12 @@ final class AppViewModel: ObservableObject {
             await MainActor.run {
                 self.taskProgress = 1
             }
-            await self.log("双语字幕已生成: \(outputPath)")
+            await self.log("\(self.ui("双语字幕已生成", "Bilingual subtitle generated")): \(outputPath)")
         }
     }
 
     func downloadTranscriptionModel() {
-        runTask(kind: .downloadModel, startMessage: "开始下载转录模型: \(settings.transcriptionModel.label)") {
+        runTask(kind: .downloadModel, startMessage: "\(self.ui("开始下载转录模型", "Starting model download")): \(settings.transcriptionModel.label)") {
             try FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: self.modelStorageDirectory()),
                 withIntermediateDirectories: true,
@@ -293,9 +294,9 @@ final class AppViewModel: ObservableObject {
                         let speedStr = Self.formatBytes(Int64(speed))
                         if let progress {
                             let percent = Int(progress * 100)
-                            await self.log("模型下载: \(percent)% \(downloadedStr)/\(totalStr) 速度 \(speedStr)/s")
+                            await self.log("\(self.ui("模型下载", "Model download")): \(percent)% \(downloadedStr)/\(totalStr) \(self.ui("速度", "speed")) \(speedStr)/s")
                         } else {
-                            await self.log("模型下载: \(downloadedStr)/\(totalStr) 速度 \(speedStr)/s")
+                            await self.log("\(self.ui("模型下载", "Model download")): \(downloadedStr)/\(totalStr) \(self.ui("速度", "speed")) \(speedStr)/s")
                         }
                     }
                 }
@@ -303,14 +304,14 @@ final class AppViewModel: ObservableObject {
 
             await MainActor.run {
                 self.taskProgress = 1
-                self.modelStatusText = "下载完成：\(self.settings.transcriptionModel.label)"
+                self.modelStatusText = "\(self.ui("下载完成", "Download completed")): \(self.settings.transcriptionModel.label)"
             }
-            await self.log("模型下载完成: \(destination.path)")
+            await self.log("\(self.ui("模型下载完成", "Model download completed")): \(destination.path)")
         }
     }
 
     func checkTranscriptionModelDownloaded() {
-        runTask(kind: .checkModel, startMessage: "检测转录模型可用性: \(settings.transcriptionModel.label)") {
+        runTask(kind: .checkModel, startMessage: "\(self.ui("检测转录模型可用性", "Checking model availability")): \(settings.transcriptionModel.label)") {
             await MainActor.run {
                 self.taskProgress = 0.2
             }
@@ -320,20 +321,20 @@ final class AppViewModel: ObservableObject {
                 let size = (attr[.size] as? NSNumber)?.int64Value ?? 0
                 if size > 1_000_000 {
                     await MainActor.run {
-                        self.modelStatusText = "可用：\(self.settings.transcriptionModel.label)（\(size / 1024 / 1024) MB）"
+                        self.modelStatusText = "\(self.ui("可用", "Available")): \(self.settings.transcriptionModel.label) (\(size / 1024 / 1024) MB)"
                     }
-                    await self.log("检测成功: 本地模型可用 (\(path), \(size / 1024 / 1024) MB)")
+                    await self.log("\(self.ui("检测成功", "Check succeeded")): \(self.ui("本地模型可用", "Local model is available")) (\(path), \(size / 1024 / 1024) MB)")
                 } else {
                     await MainActor.run {
-                        self.modelStatusText = "异常：模型文件过小，可能下载不完整"
+                        self.modelStatusText = self.ui("异常：模型文件过小，可能下载不完整", "Warning: model file is too small and may be incomplete")
                     }
-                    await self.log("检测失败: 模型文件过小，可能下载不完整 (\(path))")
+                    await self.log("\(self.ui("检测失败", "Check failed")): \(self.ui("模型文件过小，可能下载不完整", "Model file is too small and may be incomplete")) (\(path))")
                 }
             } else {
                 await MainActor.run {
-                    self.modelStatusText = "未下载：\(self.settings.transcriptionModel.label)"
+                    self.modelStatusText = "\(self.ui("未下载", "Not downloaded")): \(self.settings.transcriptionModel.label)"
                 }
-                await self.log("检测失败: 本地未找到模型文件 (\(path))")
+                await self.log("\(self.ui("检测失败", "Check failed")): \(self.ui("本地未找到模型文件", "Local model file not found")) (\(path))")
             }
             await MainActor.run {
                 self.taskProgress = 1
@@ -342,7 +343,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func deleteTranscriptionModel() {
-        runTask(kind: .deleteModel, startMessage: "删除转录模型: \(settings.transcriptionModel.label)") {
+        runTask(kind: .deleteModel, startMessage: "\(self.ui("删除转录模型", "Deleting model")): \(settings.transcriptionModel.label)") {
             await MainActor.run {
                 self.taskProgress = 0.3
             }
@@ -350,14 +351,14 @@ final class AppViewModel: ObservableObject {
             if FileManager.default.fileExists(atPath: path) {
                 try FileManager.default.removeItem(atPath: path)
                 await MainActor.run {
-                    self.modelStatusText = "已删除：\(self.settings.transcriptionModel.label)"
+                    self.modelStatusText = "\(self.ui("已删除", "Deleted")): \(self.settings.transcriptionModel.label)"
                 }
-                await self.log("已删除模型文件: \(path)")
+                await self.log("\(self.ui("已删除模型文件", "Deleted model file")): \(path)")
             } else {
                 await MainActor.run {
-                    self.modelStatusText = "未下载：\(self.settings.transcriptionModel.label)"
+                    self.modelStatusText = "\(self.ui("未下载", "Not downloaded")): \(self.settings.transcriptionModel.label)"
                 }
-                await self.log("模型文件不存在，无需删除: \(path)")
+                await self.log("\(self.ui("模型文件不存在，无需删除", "Model file does not exist, no need to delete")): \(path)")
             }
             await MainActor.run {
                 self.taskProgress = 1
@@ -377,11 +378,11 @@ final class AppViewModel: ObservableObject {
         let tool = missingToolName
         guard !tool.isEmpty else { return }
         guard let package = packageName(forTool: tool) else {
-            appendRawLog("\n[WARN] 未知工具 \(tool)，请手动安装。\n")
+            appendRawLog("\n[WARN] \(self.ui("未知工具", "Unknown tool")) \(tool)，\(self.ui("请手动安装。", "please install it manually."))\n")
             return
         }
 
-        runTask(kind: .installDependency, startMessage: "安装依赖: \(package)") {
+        runTask(kind: .installDependency, startMessage: "\(self.ui("安装依赖", "Installing dependency")): \(package)") {
             _ = try await ProcessRunner.run(
                 "brew",
                 args: ["install", package],
@@ -396,7 +397,7 @@ final class AppViewModel: ObservableObject {
                     }
                 }
             )
-            await self.log("依赖安装完成: \(package)")
+            await self.log("\(self.ui("依赖安装完成", "Dependency installed")): \(package)")
         }
     }
 
@@ -559,16 +560,16 @@ final class AppViewModel: ObservableObject {
             } catch {
                 if userCancelledTask || error is CancellationError {
                     cleanupTaskArtifacts()
-                    await log("任务已终止，已清理缓存和临时文件")
+                    await log(self.ui("任务已终止，已清理缓存和临时文件", "Task stopped. Cache and temporary files were cleaned"))
                 } else if case let AppError.toolNotFound(tool) = error {
-                    await log("失败: 未找到工具: \(tool)")
+                    await log("\(self.ui("失败", "Failed")): \(self.ui("未找到工具", "Tool not found")): \(tool)")
                     await MainActor.run {
                         self.missingToolName = tool
                         self.missingToolInstallHint = self.installHint(forTool: tool)
                         self.showMissingToolAlert = true
                     }
                 } else {
-                    await log("失败: \(error.localizedDescription)")
+                    await log("\(self.ui("失败", "Failed")): \(self.localizedErrorMessage(error))")
                 }
             }
 
@@ -622,7 +623,7 @@ final class AppViewModel: ObservableObject {
             return translatedBatch
         }
 
-        await log("检测到语言漂移，整批重译：批次 \(batchIndex)/\(totalBatches)")
+        await log("\(self.ui("检测到语言漂移，整批重译", "Language drift detected, retranslating batch")): \(batchIndex)/\(totalBatches)")
         var latest = translatedBatch
         for _ in 0..<2 {
             let retried = try await translator.translateBatch(sourceBatch, targetLanguage: targetLanguageCode)
@@ -634,7 +635,7 @@ final class AppViewModel: ObservableObject {
             }
         }
 
-        await log("警告：该批次重译后仍可能偏离目标语言，已保留最后结果")
+        await log(self.ui("警告：该批次重译后仍可能偏离目标语言，已保留最后结果", "Warning: this batch may still deviate from the target language after retry; keeping the latest result"))
         return latest
     }
 
@@ -745,9 +746,9 @@ final class AppViewModel: ObservableObject {
 
     private func installHint(forTool tool: String) -> String {
         if let package = packageName(forTool: tool) {
-            return "建议执行: brew install \(package)"
+            return self.ui("建议执行", "Suggested command") + ": brew install \(package)"
         }
-        return "请手动安装缺失工具: \(tool)"
+        return "\(self.ui("请手动安装缺失工具", "Please install the missing tool manually")): \(tool)"
     }
 
     private func stopOllamaIfNeeded(trigger: String) {
@@ -756,13 +757,40 @@ final class AppViewModel: ObservableObject {
         guard !model.isEmpty else { return }
 
         Task {
-            await self.log("\(trigger)：尝试停止 Ollama 模型 \(model)")
+            await self.log("\(trigger): \(self.ui("尝试停止 Ollama 模型", "Trying to stop Ollama model")) \(model)")
             do {
                 _ = try await ProcessRunner.run("ollama", args: ["stop", model])
-                await self.log("已停止 Ollama 模型: \(model)")
+                await self.log("\(self.ui("已停止 Ollama 模型", "Stopped Ollama model")): \(model)")
             } catch {
-                await self.log("停止 Ollama 模型失败: \(error.localizedDescription)")
+                await self.log("\(self.ui("停止 Ollama 模型失败", "Failed to stop Ollama model")): \(localizedErrorMessage(error))")
             }
         }
+    }
+
+    func ui(_ zh: String, _ en: String) -> String {
+        settings.displayLanguage == .english ? en : zh
+    }
+
+    func localizedErrorMessage(_ error: Error) -> String {
+        guard settings.displayLanguage == .english else {
+            return error.localizedDescription
+        }
+
+        if let appError = error as? AppError {
+            switch appError {
+            case .toolNotFound(let tool):
+                return "Tool not found: \(tool)"
+            case .processFailed(let detail):
+                return "Process failed: \(detail)"
+            case .invalidResponse(let detail):
+                return "Invalid response: \(detail)"
+            case .parseFailed(let detail):
+                return "Parse failed: \(detail)"
+            case .ioFailed(let detail):
+                return "I/O failed: \(detail)"
+            }
+        }
+
+        return error.localizedDescription
     }
 }

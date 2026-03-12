@@ -2,60 +2,60 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum SidebarSection: String, CaseIterable, Identifiable {
-    case settings = "全局设置"
-    case download = "下载视频"
-    case transcode = "视频转码"
-    case transcribe = "转录字幕"
-    case translate = "翻译字幕"
-    case logs = "日志"
+private enum SidebarSection: CaseIterable, Identifiable {
+    case download
+    case transcode
+    case transcribe
+    case translate
+    case logs
+    case settings
 
-    var id: String { rawValue }
+    var id: Self { self }
 
     var icon: String {
         switch self {
-        case .settings: return "gearshape"
         case .download: return "arrow.down.circle"
         case .transcode: return "film.stack"
         case .transcribe: return "waveform"
         case .translate: return "globe"
         case .logs: return "text.justify.left"
+        case .settings: return "gearshape"
         }
     }
 }
 
 struct ContentView: View {
     @StateObject private var vm = AppViewModel()
-    @State private var selectedSection: SidebarSection? = .settings
+    @State private var selectedSection: SidebarSection? = .download
 
     var body: some View {
         NavigationSplitView {
             List(SidebarSection.allCases, selection: $selectedSection) { section in
-                Label(section.rawValue, systemImage: section.icon)
+                Label(sidebarTitle(for: section), systemImage: section.icon)
                     .tag(section)
             }
             .listStyle(.sidebar)
-            .navigationTitle("功能")
+            .navigationTitle(ui("功能", "Sections"))
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if vm.isRunning {
                         progressView
                     }
-                    detailView(for: selectedSection ?? .settings)
+                    detailView(for: selectedSection ?? .download)
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
         .background(WindowCloseGuard(viewModel: vm))
-        .alert("缺少运行环境", isPresented: $vm.showMissingToolAlert) {
-            Button("自动安装") {
+        .alert(ui("缺少运行环境", "Missing Dependency"), isPresented: $vm.showMissingToolAlert) {
+            Button(ui("自动安装", "Install")) {
                 vm.installMissingTool()
             }
-            Button("取消", role: .cancel) {}
+            Button(ui("取消", "Cancel"), role: .cancel) {}
         } message: {
-            Text("缺少工具：\(vm.missingToolName)\n\(vm.missingToolInstallHint)")
+            Text("\(ui("缺少工具", "Missing tool")): \(vm.missingToolName)\n\(vm.missingToolInstallHint)")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             vm.handleAppTermination()
@@ -65,8 +65,6 @@ struct ContentView: View {
     @ViewBuilder
     private func detailView(for section: SidebarSection) -> some View {
         switch section {
-        case .settings:
-            settingsView
         case .download:
             downloadView
         case .transcode:
@@ -77,19 +75,32 @@ struct ContentView: View {
             translateView
         case .logs:
             logsView
+        case .settings:
+            settingsView
         }
     }
 
     private var settingsView: some View {
-        GroupBox("全局设置") {
+        GroupBox(ui("全局设置", "Global Settings")) {
             VStack(alignment: .leading, spacing: 10) {
-                formRow("全局目录") {
+                formRow(ui("显示语言", "Display Language")) {
+                    Picker("", selection: $vm.settings.displayLanguage) {
+                        ForEach(DisplayLanguage.allCases) { language in
+                            Text(language.rawValue).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                formRow(ui("全局目录", "Global Directory")) {
                     Text(vm.settings.globalOutputDirectory)
                         .font(.system(size: 12, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                formRow("解析后路径") {
+                formRow(ui("解析后路径", "Resolved Path")) {
                     Text(vm.resolvedDisplayPath(for: vm.settings.globalOutputDirectory))
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
@@ -99,7 +110,7 @@ struct ContentView: View {
                 Divider()
 
                 HStack(spacing: 10) {
-                    Button("选择全局目录") {
+                    Button(ui("选择全局目录", "Choose Global Directory")) {
                         if let directory = pickDirectory(baseDirectory: vm.appInternalRootPath()) {
                             _ = vm.setRelativeDirectory(from: directory, target: \.globalOutputDirectory)
                         }
@@ -109,7 +120,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Button("全局覆盖功能目录") {
+                    Button(ui("全局覆盖功能目录", "Apply to All Tasks")) {
                         vm.applyGlobalOutputDirectoryToAll()
                     }
                     .frame(width: 140)
@@ -117,7 +128,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Button("保存设置") {
+                    Button(ui("保存设置", "Save Settings")) {
                         vm.saveSettings()
                     }
                     .buttonStyle(.borderedProminent)
@@ -130,16 +141,16 @@ struct ContentView: View {
     }
 
     private var downloadView: some View {
-        GroupBox("下载视频") {
+        GroupBox(ui("下载视频", "Download Video")) {
             VStack(alignment: .leading, spacing: 10) {
-                formRow("下载目录") {
+                formRow(ui("下载目录", "Download Directory")) {
                     HStack {
                         Text(vm.settings.downloadOutputDirectory)
                             .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 8)
-                        Button("选择目录") {
+                        Button(ui("选择目录", "Choose Directory")) {
                             if let directory = pickDirectory(baseDirectory: vm.appInternalRootPath()) {
                                 _ = vm.rememberCommonOutputDirectory(from: directory)
                             }
@@ -151,17 +162,17 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
 
                 HStack {
-                    Button("下载到输出目录") {
+                    Button(ui("下载到输出目录", "Download")) {
                         vm.downloadVideo()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("终止任务") {
+                    Button(ui("终止任务", "Stop Task")) {
                         vm.cancelCurrentTask()
                     }
                     .disabled(vm.runningTaskKind != .downloadVideo)
 
-                    Text(vm.selectedVideoPath.isEmpty ? "未选择视频" : vm.selectedVideoPath)
+                    Text(vm.selectedVideoPath.isEmpty ? ui("未选择视频", "No video selected") : vm.selectedVideoPath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -172,10 +183,10 @@ struct ContentView: View {
     }
 
     private var transcribeView: some View {
-        GroupBox("转录字幕") {
+        GroupBox(ui("转录字幕", "Transcribe Subtitle")) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 8) {
-                    Text("转录模型")
+                    Text(ui("转录模型", "Transcription Model"))
                         .frame(width: 120, alignment: .leading)
 
                     Picker("Transcription Model", selection: $vm.settings.transcriptionModel) {
@@ -185,30 +196,30 @@ struct ContentView: View {
                     }
                     .pickerStyle(.menu)
 
-                    Button("下载") {
+                    Button(ui("下载", "Download")) {
                         vm.downloadTranscriptionModel()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("检测下载") {
+                    Button(ui("检测下载", "Check Download")) {
                         vm.checkTranscriptionModelDownloaded()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("终止任务") {
+                    Button(ui("终止任务", "Stop Task")) {
                         vm.cancelCurrentTask()
                     }
                     .disabled(vm.runningTaskKind != .downloadModel && vm.runningTaskKind != .checkModel)
                 }
 
-                formRow("模型路径") {
+                formRow(ui("模型路径", "Model Path")) {
                     Text(vm.localModelPath(for: vm.settings.transcriptionModel))
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
-                GroupBox("模型状态") {
+                GroupBox(ui("模型状态", "Model Status")) {
                     Text(vm.modelStatusText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
@@ -216,20 +227,20 @@ struct ContentView: View {
 
                 HStack {
                     Spacer()
-                    Button("删除模型") {
+                    Button(ui("删除模型", "Delete Model")) {
                         vm.deleteTranscriptionModel()
                     }
                     .disabled(vm.isRunning)
                 }
 
-                formRow("转录目录") {
+                formRow(ui("转录目录", "Transcription Directory")) {
                     HStack {
                         Text(vm.settings.transcribeOutputDirectory)
                             .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 8)
-                        Button("选择目录") {
+                        Button(ui("选择目录", "Choose Directory")) {
                             if let directory = pickDirectory(baseDirectory: vm.appInternalRootPath()) {
                                 _ = vm.setRelativeDirectory(from: directory, target: \.transcribeOutputDirectory)
                             }
@@ -240,30 +251,30 @@ struct ContentView: View {
                 Divider()
 
                 HStack {
-                    Button("手动选择视频") {
+                    Button(ui("手动选择视频", "Choose Video")) {
                         if let path = pickFile(extensions: ["mp4", "mkv", "mov", "m4v", "webm"]) {
                             vm.selectedVideoPath = path
                         }
                     }
 
-                    Text(vm.selectedVideoPath.isEmpty ? "未选择视频" : vm.selectedVideoPath)
+                    Text(vm.selectedVideoPath.isEmpty ? ui("未选择视频", "No video selected") : vm.selectedVideoPath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
                 HStack {
-                    Button("执行转录") {
+                    Button(ui("执行转录", "Run Transcription")) {
                         vm.transcribeVideo()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("终止任务") {
+                    Button(ui("终止任务", "Stop Task")) {
                         vm.cancelCurrentTask()
                     }
                     .disabled(vm.runningTaskKind != .transcribeVideo)
 
-                    Text(vm.selectedSubtitlePath.isEmpty ? "未生成字幕" : vm.selectedSubtitlePath)
+                    Text(vm.selectedSubtitlePath.isEmpty ? ui("未生成字幕", "No subtitle generated") : vm.selectedSubtitlePath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -274,16 +285,16 @@ struct ContentView: View {
     }
 
     private var transcodeView: some View {
-        GroupBox("视频转码") {
+        GroupBox(ui("视频转码", "Video Transcode")) {
             VStack(alignment: .leading, spacing: 10) {
-                formRow("输出目录") {
+                formRow(ui("输出目录", "Output Directory")) {
                     HStack {
                         Text(vm.settings.transcodeOutputDirectory)
                             .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 8)
-                        Button("选择目录") {
+                        Button(ui("选择目录", "Choose Directory")) {
                             if let directory = pickDirectory(baseDirectory: vm.appInternalRootPath()) {
                                 _ = vm.setRelativeDirectory(from: directory, target: \.transcodeOutputDirectory)
                             }
@@ -292,20 +303,20 @@ struct ContentView: View {
                 }
 
                 HStack {
-                    Button("选择输入视频") {
+                    Button(ui("选择输入视频", "Choose Input Video")) {
                         if let path = pickFile(extensions: ["mp4", "mkv", "mov", "m4v", "webm", "avi"]) {
                             vm.selectedTranscodeInputPath = path
                         }
                     }
 
-                    Text(vm.selectedTranscodeInputPath.isEmpty ? "未选择视频" : vm.selectedTranscodeInputPath)
+                    Text(vm.selectedTranscodeInputPath.isEmpty ? ui("未选择视频", "No video selected") : vm.selectedTranscodeInputPath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
                 HStack {
-                    Text("输出格式")
+                    Text(ui("输出格式", "Output Format"))
                         .frame(width: 120, alignment: .leading)
                     Picker("Format", selection: $vm.selectedTranscodeFormat) {
                         Text("mp4").tag("mp4")
@@ -323,12 +334,12 @@ struct ContentView: View {
                 }
 
                 HStack {
-                    Button("执行转码") {
+                    Button(ui("执行转码", "Run Transcode")) {
                         vm.transcodeVideo()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("终止任务") {
+                    Button(ui("终止任务", "Stop Task")) {
                         vm.cancelCurrentTask()
                     }
                     .disabled(vm.runningTaskKind != .transcodeVideo)
@@ -339,16 +350,16 @@ struct ContentView: View {
     }
 
     private var translateView: some View {
-        GroupBox("翻译字幕") {
+        GroupBox(ui("翻译字幕", "Translate Subtitle")) {
             VStack(alignment: .leading, spacing: 10) {
-                formRow("翻译目录") {
+                formRow(ui("翻译目录", "Translation Directory")) {
                     HStack {
                         Text(vm.settings.translateOutputDirectory)
                             .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 8)
-                        Button("选择目录") {
+                        Button(ui("选择目录", "Choose Directory")) {
                             if let directory = pickDirectory(baseDirectory: vm.appInternalRootPath()) {
                                 _ = vm.rememberCommonOutputDirectory(from: directory)
                             }
@@ -356,7 +367,7 @@ struct ContentView: View {
                     }
                 }
 
-                formRow("翻译引擎") {
+                formRow(ui("翻译引擎", "Translation Backend")) {
                     Picker("Provider", selection: $vm.settings.provider) {
                         ForEach(TranslationProvider.allCases) { provider in
                             Text(provider.rawValue).tag(provider)
@@ -365,16 +376,16 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                 }
 
-                formRow("翻译模式") {
+                formRow(ui("翻译模式", "Translation Mode")) {
                     Picker("Mode", selection: $vm.settings.translationMode) {
                         ForEach(TranslationMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Text(modeLabel(mode)).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
                 }
 
-                formRow("目标语言") {
+                formRow(ui("目标语言", "Target Language")) {
                     Picker("Target Language", selection: $vm.settings.targetLanguage) {
                         ForEach(TargetLanguage.allCases) { language in
                             Text(language.rawValue).tag(language)
@@ -395,7 +406,7 @@ struct ContentView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    formRow("翻译模型") {
+                    formRow(ui("翻译模型", "Translation Model")) {
                         TextField("gpt-4o-mini", text: $vm.settings.translationModel)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -404,7 +415,7 @@ struct ContentView: View {
                         TextField("http://127.0.0.1:11434", text: $vm.settings.ollamaBaseURL)
                             .textFieldStyle(.roundedBorder)
                     }
-                    formRow("Ollama 模型") {
+                    formRow(ui("Ollama 模型", "Ollama Model")) {
                         TextField("qwen2.5:7b", text: $vm.settings.ollamaModel)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -413,25 +424,25 @@ struct ContentView: View {
                 Divider()
 
                 HStack {
-                    Button("手动选择字幕") {
+                    Button(ui("手动选择字幕", "Choose Subtitle")) {
                         if let path = pickFile(extensions: ["srt"]) {
                             vm.selectedSubtitlePath = path
                         }
                     }
 
-                    Text(vm.selectedSubtitlePath.isEmpty ? "未选择字幕" : vm.selectedSubtitlePath)
+                    Text(vm.selectedSubtitlePath.isEmpty ? ui("未选择字幕", "No subtitle selected") : vm.selectedSubtitlePath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
                 HStack {
-                    Button("执行翻译并生成双语字幕") {
+                    Button(ui("执行翻译并生成双语字幕", "Translate and Export Bilingual SRT")) {
                         vm.translateSubtitle()
                     }
                     .disabled(vm.isRunning)
 
-                    Button("终止任务") {
+                    Button(ui("终止任务", "Stop Task")) {
                         vm.cancelCurrentTask()
                     }
                     .disabled(vm.runningTaskKind != .translateSubtitle)
@@ -442,16 +453,16 @@ struct ContentView: View {
     }
 
     private var logsView: some View {
-        GroupBox("日志") {
-            LogTextView(text: vm.logs.isEmpty ? "等待执行" : vm.logs)
+        GroupBox(ui("日志", "Logs")) {
+            LogTextView(text: vm.logs.isEmpty ? ui("等待执行", "Waiting") : vm.logs)
             .frame(minHeight: 360)
         }
     }
 
     private var progressView: some View {
-        GroupBox("任务进度") {
+        GroupBox(ui("任务进度", "Task Progress")) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(vm.currentTaskTitle.isEmpty ? "处理中" : vm.currentTaskTitle)
+                Text(vm.currentTaskTitle.isEmpty ? ui("处理中", "Processing") : vm.currentTaskTitle)
                     .font(.headline)
 
                 if let progress = vm.taskProgress {
@@ -461,14 +472,14 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ProgressView()
-                    Text("正在执行，请查看日志输出...")
+                    Text(ui("正在执行，请查看日志输出...", "Running, see logs for details..."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 HStack {
                     Spacer()
-                    Button("终止当前任务") {
+                    Button(ui("终止当前任务", "Stop Current Task")) {
                         vm.cancelCurrentTask()
                     }
                     .buttonStyle(.borderedProminent)
@@ -485,6 +496,29 @@ struct ContentView: View {
             Text(title)
                 .frame(width: 120, alignment: .leading)
             content()
+        }
+    }
+
+    private func ui(_ zh: String, _ en: String) -> String {
+        vm.settings.displayLanguage == .english ? en : zh
+    }
+
+    private func sidebarTitle(for section: SidebarSection) -> String {
+        switch section {
+        case .download: return ui("下载视频", "Download")
+        case .transcode: return ui("视频转码", "Transcode")
+        case .transcribe: return ui("转录字幕", "Transcribe")
+        case .translate: return ui("翻译字幕", "Translate")
+        case .logs: return ui("日志", "Logs")
+        case .settings: return ui("全局设置", "Settings")
+        }
+    }
+
+    private func modeLabel(_ mode: TranslationMode) -> String {
+        switch mode {
+        case .fast: return ui("极速", "Fast")
+        case .balanced: return ui("标准", "Balanced")
+        case .quality: return ui("高质量", "Quality")
         }
     }
 
