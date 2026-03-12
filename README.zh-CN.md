@@ -134,4 +134,4 @@ scripts/
 
 ## 开源协议
 
-本项目使用 GPL-3.0 协议，详见 [LICENSE](/Volumes/SSD/data/src_code/codexproj/ytd/LICENSE)。
+本项目使用 GPL-3.0 协议，详见 [LICENSE](LICENSE)。

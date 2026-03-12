@@ -4,7 +4,7 @@ import struct
 from pathlib import Path
 
 
-ROOT = Path("/Volumes/SSD/data/src_code/codexproj/ytd")
+ROOT = Path(__file__).resolve().parent.parent
 ICONSET = ROOT / "assets" / "AppIcon.iconset"
 OUTPUT = ROOT / "assets" / "AppIcon.icns"
 
