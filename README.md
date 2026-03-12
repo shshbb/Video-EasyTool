@@ -27,6 +27,7 @@ Packaged app users:
 
 - Download the latest `.dmg` from [Releases](https://github.com/shshbb/Video-EasyTool/releases)
 - The app itself targets `macOS 14+`
+- Current packaged builds are Apple Silicon only and do not support Intel Macs
 - Video download, transcoding, and local transcription still rely on external tools installed on the machine:
   - `yt-dlp`
   - `ffmpeg`
@@ -150,6 +151,7 @@ scripts/
 
 - Some malformed subtitle files may fail to parse
 - Long subtitle translation quality still depends on model stability
+- Current packaged builds are Apple Silicon only
 - Required external tools must be installed locally before use
 
 ## License

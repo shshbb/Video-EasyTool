@@ -27,6 +27,7 @@
 
 - 推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载最新的 `.dmg`
 - 应用本身面向 `macOS 14+`
+- 当前提供的安装包仅支持 Apple Silicon（M 系列）Mac，不支持 Intel Mac
 - 视频下载、转码和本地转录仍然依赖目标机器上已安装的外部工具：
   - `yt-dlp`
   - `ffmpeg`
@@ -150,6 +151,7 @@ scripts/
 
 - 某些损坏或格式异常的字幕文件可能无法解析
 - 长字幕翻译质量仍然依赖模型输出稳定性
+- 当前提供的安装包仅支持 Apple Silicon（M 系列）Mac
 - 使用前需要先在本地安装所需外部工具
 
 ## 开源协议
