@@ -53,13 +53,6 @@ let subtitleAttrs: [NSAttributedString.Key: Any] = [
 ]
 subtitle.draw(at: NSPoint(x: 50, y: 318), withAttributes: subtitleAttrs)
 
-let note = "Use the icons below to install"
-let noteAttrs: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-    .foregroundColor: NSColor(calibratedWhite: 0.40, alpha: 1.0)
-]
-note.draw(at: NSPoint(x: 50, y: 292), withAttributes: noteAttrs)
-
 let arrowPath = NSBezierPath()
 arrowPath.move(to: NSPoint(x: arrowRect.minX, y: arrowRect.midY))
 arrowPath.line(to: NSPoint(x: arrowRect.maxX - 24, y: arrowRect.midY))
