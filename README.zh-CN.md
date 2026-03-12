@@ -2,8 +2,6 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-对于大多数用户，推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载已经打包好的安装包。源码编译和运行更适合开发、调试或参与项目贡献，并不建议作为日常安装和使用方式。
-
 `Video Easy Tool` 是一个原生 macOS 应用，用于下载 YouTube 视频、使用本地 Whisper 模型转录字幕、通过 OpenAI 兼容接口或 Ollama 翻译字幕，并导出双语字幕文件。
 
 ## 功能特性
@@ -37,6 +35,8 @@ ollama serve
 ```
 
 ## 运行方式
+
+对于大多数用户，推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载已经打包好的安装包。源码编译和运行更适合开发、调试或参与项目贡献，并不建议作为日常安装和使用方式。
 
 开发环境运行：
 
