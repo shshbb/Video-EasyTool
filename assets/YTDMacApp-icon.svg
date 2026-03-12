@@ -1,0 +1,39 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1A26"/>
+      <stop offset="1" stop-color="#132B3B"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF4545"/>
+      <stop offset="1" stop-color="#FF7A2F"/>
+    </linearGradient>
+    <linearGradient id="sub" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19BFA8"/>
+      <stop offset="1" stop-color="#2EE7C6"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-opacity="0.35" flood-color="#000000"/>
+    </filter>
+  </defs>
+
+  <rect x="36" y="36" width="952" height="952" rx="220" fill="url(#bg)"/>
+  <rect x="72" y="72" width="880" height="880" rx="190" fill="none" stroke="#2A445A" stroke-width="6" opacity="0.65"/>
+
+  <g filter="url(#shadow)">
+    <rect x="180" y="176" width="664" height="420" rx="88" fill="url(#card)"/>
+    <polygon points="440,286 440,486 624,386" fill="#FFFFFF"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="168" y="614" width="688" height="220" rx="72" fill="url(#sub)"/>
+    <rect x="236" y="682" width="264" height="30" rx="15" fill="#0E2A2A" opacity="0.82"/>
+    <rect x="236" y="736" width="188" height="30" rx="15" fill="#0E2A2A" opacity="0.82"/>
+
+    <path d="M612 673 L724 673 L724 636 L806 704 L724 772 L724 736 L612 736 Z" fill="#0E2A2A" opacity="0.86"/>
+    <path d="M806 790 L694 790 L694 826 L612 758 L694 690 L694 726 L806 726 Z" fill="#0E2A2A" opacity="0.86"/>
+  </g>
+
+  <circle cx="812" cy="212" r="66" fill="#FFD166"/>
+  <path d="M812 164 L825 198 L862 198 L832 220 L844 256 L812 234 L780 256 L792 220 L762 198 L799 198 Z" fill="#8B5E00" opacity="0.92"/>
+</svg>
