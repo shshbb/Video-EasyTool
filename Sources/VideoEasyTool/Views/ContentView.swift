@@ -177,6 +177,11 @@ struct ContentView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
+
+                GroupBox(ui("下载日志", "Download Logs")) {
+                    LogTextView(text: vm.logs.isEmpty ? ui("等待执行", "Waiting") : vm.logs)
+                        .frame(minHeight: 180)
+                }
             }
             .padding(8)
         }

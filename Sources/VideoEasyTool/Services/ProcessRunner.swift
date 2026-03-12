@@ -2,6 +2,10 @@ import Foundation
 import Darwin
 
 struct ProcessRunner {
+    static func requireTool(_ tool: String) throws {
+        _ = try findTool(tool)
+    }
+
     static func run(
         _ launchPath: String,
         args: [String],
@@ -12,6 +16,7 @@ struct ProcessRunner {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
+        process.environment = mergedEnvironment()
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -134,5 +139,11 @@ struct ProcessRunner {
             seen.insert(path)
             return true
         }
+    }
+
+    private static func mergedEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = toolSearchPaths().joined(separator: ":")
+        return environment
     }
 }

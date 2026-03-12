@@ -134,4 +134,4 @@ scripts/
 
 ## License
 
-This project is licensed under the GPL-3.0 license. See [LICENSE](/Volumes/SSD/data/src_code/codexproj/ytd/LICENSE).
+This project is licensed under the GPL-3.0 license. See [LICENSE](LICENSE).
