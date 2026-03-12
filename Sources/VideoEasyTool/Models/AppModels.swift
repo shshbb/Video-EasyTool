@@ -20,6 +20,19 @@ enum DisplayLanguage: String, CaseIterable, Identifiable, Codable {
     case english = "English"
 
     var id: String { rawValue }
+
+    static var systemDefault: DisplayLanguage {
+        let preferred = Locale.preferredLanguages
+
+        for identifier in preferred {
+            let normalized = identifier.lowercased()
+            if normalized.hasPrefix("zh-hans") || normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh") {
+                return .simplifiedChinese
+            }
+        }
+
+        return .english
+    }
 }
 
 enum TaskKind: String, Equatable {
@@ -174,7 +187,7 @@ struct AppSettings: Codable {
         self.ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? AppSettings.default.ollamaModel
         self.provider = try container.decodeIfPresent(TranslationProvider.self, forKey: .provider) ?? AppSettings.default.provider
         self.translationMode = try container.decodeIfPresent(TranslationMode.self, forKey: .translationMode) ?? .balanced
-        self.displayLanguage = try container.decodeIfPresent(DisplayLanguage.self, forKey: .displayLanguage) ?? .simplifiedChinese
+        self.displayLanguage = try container.decodeIfPresent(DisplayLanguage.self, forKey: .displayLanguage) ?? DisplayLanguage.systemDefault
 
         if let model = try? container.decode(TranscriptionModel.self, forKey: .transcriptionModel) {
             self.transcriptionModel = model
@@ -229,7 +242,7 @@ struct AppSettings: Codable {
         targetLanguage: .simplifiedChinese,
         provider: .openAICompatible,
         translationMode: .balanced,
-        displayLanguage: .simplifiedChinese
+        displayLanguage: .systemDefault
     )
 }
 
