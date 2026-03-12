@@ -2,15 +2,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "YTDMacApp",
+    name: "VideoEasyTool",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "YTDMacApp", targets: ["YTDMacApp"])
+        .executable(name: "VideoEasyTool", targets: ["VideoEasyTool"])
     ],
     targets: [
         .executableTarget(
-            name: "YTDMacApp",
-            path: "Sources/YTDMacApp"
+            name: "VideoEasyTool",
+            path: "Sources/VideoEasyTool"
         )
     ]
 )

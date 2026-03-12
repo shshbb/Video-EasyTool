@@ -5,7 +5,7 @@ final class SettingsStore {
 
     init() {
         let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/YTDMacApp", isDirectory: true)
+            .appendingPathComponent("Library/Application Support/VideoEasyTool", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         self.fileURL = base.appendingPathComponent("settings.json")
     }

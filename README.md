@@ -1,6 +1,6 @@
-# YTDMacApp
+# Video Easy Tool
 
-`YTDMacApp` 是一个原生 macOS 应用，使用 SwiftUI 构建，面向 YouTube 视频下载、字幕转录、字幕翻译和基础转码场景。
+`Video Easy Tool` 是一个原生桌面应用，使用 SwiftUI 构建，面向 YouTube 视频下载、字幕转录、字幕翻译和基础转码场景。
 
 ## 功能
 
@@ -116,7 +116,7 @@ swift build -c release
 ## 项目结构
 
 ```text
-Sources/YTDMacApp/
+Sources/VideoEasyTool/
   Models/
   Services/
   Utils/
@@ -131,3 +131,7 @@ scripts/
 - 某些异常字幕文件可能解析失败
 - 长字幕翻译仍然依赖模型输出稳定性
 - 本地工具缺失时需要先安装对应依赖
+
+## License
+
+GPL-3.0

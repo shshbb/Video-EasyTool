@@ -8,7 +8,7 @@ struct IconSpec {
 
 let fm = FileManager.default
 let root = URL(fileURLWithPath: "/Volumes/SSD/data/src_code/codexproj/ytd")
-let sourceURL = root.appendingPathComponent("assets/YTDMacApp-icon-1024.png")
+let sourceURL = root.appendingPathComponent("assets/VideoEasyTool-icon-1024.png")
 let iconsetURL = root.appendingPathComponent("assets/AppIcon.iconset")
 
 let specs: [IconSpec] = [

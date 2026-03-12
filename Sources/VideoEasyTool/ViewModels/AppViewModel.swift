@@ -406,7 +406,7 @@ final class AppViewModel: ObservableObject {
 
     func appInternalRootPath() -> String {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/YTDMacApp")
+            .appendingPathComponent("Library/Application Support/VideoEasyTool")
             .path
     }
 
