@@ -1,119 +1,117 @@
 # Video Easy Tool
 
-`Video Easy Tool` 是一个原生桌面应用，使用 SwiftUI 构建，面向 YouTube 视频下载、字幕转录、字幕翻译和基础转码场景。
+A native macOS app for downloading YouTube videos, transcribing subtitles with local Whisper models, translating subtitles with OpenAI-compatible APIs or Ollama, and exporting bilingual subtitle files.
 
-## 功能
+## Features
 
-- 下载 YouTube 视频
-- 使用本地 Whisper 模型转录字幕
-- 生成双语字幕
-- 支持 OpenAI 兼容接口翻译
-- 支持 Ollama 本地模型翻译
-- 支持独立执行下载、转录、翻译、转码
+- Download YouTube videos with `yt-dlp`
+- Transcribe local video files with local Whisper models
+- Translate subtitles with:
+  - OpenAI-compatible chat completion APIs
+  - Ollama local models
+- Export bilingual `.srt` subtitles
+- Transcode local video files with `ffmpeg`
+- Run download, transcription, translation, and transcoding independently
 
-## 技术栈
+## Requirements
 
-- Swift 5.10
-- SwiftUI
-- Swift Package Manager
-- `yt-dlp`
-- `ffmpeg` / `ffprobe`
-- `whisper-cli`
-- Ollama 或 OpenAI 兼容翻译接口
-
-## 系统要求
-
-- macOS 14 或更高版本
+- macOS 14+
 - Xcode Command Line Tools
+- Homebrew
 
-## 本地依赖
-
-先安装下载和媒体处理依赖：
+Install required tools:
 
 ```bash
-brew install yt-dlp ffmpeg
+brew install yt-dlp ffmpeg whisper-cpp
 ```
 
-如果你要使用本地翻译，再安装并启动 Ollama：
+If you want local subtitle translation, install and start Ollama:
 
 ```bash
 brew install ollama
 ollama serve
 ```
 
-如果你要使用本地转录，需要安装 `whisper-cli`：
+## Run
 
-```bash
-brew install whisper-cpp
-```
-
-## 运行
-
-开发环境直接运行：
+Development:
 
 ```bash
 swift run
 ```
 
-构建 release：
+Release build:
 
 ```bash
 swift build -c release
 ```
 
-## 使用说明
+## Packaging
 
-应用里的几个任务是分开的，可以单独执行。
+The app bundle name is `VideoEasyTool.app`.
 
-### 下载视频
+Current packaged artifacts are written to:
 
-- 输入 YouTube 链接
-- 选择输出目录
-- 下载视频到本地
+- `dist/VideoEasyTool.app`
+- `dist/VideoEasyTool.zip`
 
-### 转录字幕
+## Workflow
 
-- 选择本地视频文件
-- 选择 Whisper 模型
-- 下载或检测模型
-- 执行本地转录，生成 `*_original.srt`
+### 1. Download video
 
-### 翻译字幕
+- Paste a YouTube URL
+- Choose an output directory
+- Download the source video locally
 
-- 选择本地字幕文件
-- 选择目标语言
-- 选择翻译提供方
-- OpenAI Compatible：填写 `base_url` 和 `api_key`
-- Ollama：填写本地服务地址和模型名
-- 执行翻译，生成 `*_bilingual.srt`
+### 2. Transcribe subtitle
 
-### 视频转码
+- Select a local video file
+- Choose a Whisper model
+- Download or verify the selected model
+- Generate `*_original.srt`
 
-- 选择本地视频
-- 选择输出格式和 CRF
-- 执行转码
+### 3. Translate subtitle
 
-## 接口兼容
+- Select a local `.srt` file
+- Choose a target language
+- Choose a translation backend
+- Generate `*_bilingual.srt`
 
-### OpenAI Compatible
+### 4. Transcode video
 
-- 翻译接口：`POST /v1/chat/completions`
-- 鉴权方式：`Authorization: Bearer <API_KEY>`
-- `base_url` 支持填写带 `/v1` 或不带 `/v1` 的地址
+- Select a local video file
+- Choose output format and CRF
+- Export a transcoded file
+
+## Translation Backends
+
+### OpenAI-compatible API
+
+- Endpoint: `POST /v1/chat/completions`
+- Auth: `Authorization: Bearer <API_KEY>`
+- `base_url` supports both forms:
+  - with `/v1`
+  - without `/v1`
 
 ### Ollama
 
-- 翻译接口：`POST /api/chat`
-- 使用 `messages` 格式请求
+- Endpoint: `POST /api/chat`
+- Uses chat `messages` payloads
 
-## 数据与输出
+## Data Storage
 
-- 默认输出目录位于应用内部目录
-- 用户手动选择的目录会被记住
-- Whisper 模型下载到应用内部模型目录
-- 任务日志显示在应用内，不写入仓库
+- Default output directories are stored inside the app data directory
+- User-selected external directories are remembered
+- Whisper models are stored in the app's internal model directory
+- Runtime logs are shown in the app UI and are not committed to this repository
 
-## 项目结构
+App data location:
+
+```text
+~/Library/Application Support/VideoEasyTool
+```
+
+## Project Structure
 
 ```text
 Sources/VideoEasyTool/
@@ -126,12 +124,12 @@ assets/
 scripts/
 ```
 
-## 已知限制
+## Known Limitations
 
-- 某些异常字幕文件可能解析失败
-- 长字幕翻译仍然依赖模型输出稳定性
-- 本地工具缺失时需要先安装对应依赖
+- Some malformed subtitle files may fail to parse
+- Long subtitle translation quality still depends on model stability
+- Required external tools must be installed locally before use
 
 ## License
 
-GPL-3.0
+This project is licensed under the GPL-3.0 license. See [LICENSE](/Volumes/SSD/data/src_code/codexproj/ytd/LICENSE).
