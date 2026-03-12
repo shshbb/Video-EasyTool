@@ -84,11 +84,12 @@ struct ContentView: View {
         GroupBox(ui("全局设置", "Global Settings")) {
             VStack(alignment: .leading, spacing: 10) {
                 formRow(ui("显示语言", "Display Language")) {
-                    Picker("Display Language", selection: $vm.settings.displayLanguage) {
+                    Picker("", selection: $vm.settings.displayLanguage) {
                         ForEach(DisplayLanguage.allCases) { language in
                             Text(language.rawValue).tag(language)
                         }
                     }
+                    .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
