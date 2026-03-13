@@ -641,7 +641,7 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.accentColor.opacity(0.08))
         )
     }
