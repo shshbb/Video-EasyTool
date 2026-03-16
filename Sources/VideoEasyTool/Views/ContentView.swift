@@ -27,6 +27,7 @@ private enum SidebarSection: CaseIterable, Identifiable {
 struct ContentView: View {
     @StateObject private var vm = AppViewModel()
     @State private var selectedSection: SidebarSection? = .download
+    @State private var showTranslationAdvancedSettings: Bool = false
 
     var body: some View {
         ZStack {
@@ -153,6 +154,7 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Spacer(minLength: 0)
@@ -161,12 +163,14 @@ struct ContentView: View {
                             vm.applyGlobalOutputDirectoryToAll()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("保存设置", "Save Settings")) {
                             vm.saveSettings()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
                     }
                 }
@@ -193,6 +197,7 @@ struct ContentView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         }
                     }
 
@@ -206,12 +211,14 @@ struct ContentView: View {
                             vm.downloadVideo()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("终止任务", "Stop Task")) {
                             vm.cancelCurrentTask()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .downloadVideo)
 
                         Spacer(minLength: 0)
@@ -253,18 +260,21 @@ struct ContentView: View {
                             vm.downloadTranscriptionModel()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("检测下载", "Check Download")) {
                             vm.checkTranscriptionModelDownloaded()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("终止任务", "Stop Task")) {
                             vm.cancelCurrentTask()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .downloadModel && vm.runningTaskKind != .checkModel)
                     }
 
@@ -282,6 +292,7 @@ struct ContentView: View {
                             vm.deleteTranscriptionModel()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
                     }
 
@@ -294,6 +305,7 @@ struct ContentView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         }
                     }
                 }
@@ -308,6 +320,7 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
 
                         Spacer(minLength: 0)
                         statusPill(
@@ -321,12 +334,14 @@ struct ContentView: View {
                             vm.transcribeVideo()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("终止任务", "Stop Task")) {
                             vm.cancelCurrentTask()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .transcribeVideo)
 
                         Spacer(minLength: 0)
@@ -359,6 +374,7 @@ struct ContentView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         }
                     }
 
@@ -369,6 +385,7 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
 
                         Spacer(minLength: 0)
                         statusPill(
@@ -398,12 +415,14 @@ struct ContentView: View {
                             vm.transcodeVideo()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("终止任务", "Stop Task")) {
                             vm.cancelCurrentTask()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .transcodeVideo)
                     }
                 }
@@ -430,6 +449,7 @@ struct ContentView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         }
                     }
 
@@ -486,6 +506,89 @@ struct ContentView: View {
                                 .textFieldStyle(.roundedBorder)
                         }
                     }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                showTranslationAdvancedSettings.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: showTranslationAdvancedSettings ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                Text(ui("高级设置", "Advanced Settings"))
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .hoverAnimatedButton()
+
+                        if showTranslationAdvancedSettings {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Spacer(minLength: 0)
+                                    Button(ui("重置为推荐值", "Reset to Recommended")) {
+                                        vm.resetTranslationAdvancedSettings()
+                                    }
+                                    .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
+                                }
+
+                                formRow("Temperature") {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Slider(value: $vm.settings.translationTemperature, in: 0...0.5, step: 0.05)
+                                        Text(
+                                            ui("当前值", "Current") + ": " +
+                                            String(format: "%.2f", vm.settings.translationTemperature) + "  •  " +
+                                            ui("推荐值", "Recommended") + ": 0.10"
+                                        )
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                formRow(ui("自定义批量大小", "Custom Batch Size")) {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Toggle(ui("启用自定义批量大小", "Enable custom batch size"), isOn: $vm.settings.useCustomTranslationBatchSize)
+                                            .toggleStyle(.switch)
+
+                                        HStack(spacing: 12) {
+                                            Stepper(value: $vm.settings.customTranslationBatchSize, in: 1...40) {
+                                                Text(
+                                                    vm.settings.useCustomTranslationBatchSize
+                                                    ? "\(vm.settings.customTranslationBatchSize)"
+                                                    : "\(vm.effectiveTranslationBatchSize())"
+                                                )
+                                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                            }
+                                            .disabled(!vm.settings.useCustomTranslationBatchSize)
+
+                                            Spacer(minLength: 0)
+
+                                            statusPill(
+                                                title: ui("当前批量", "Active Batch"),
+                                                value: "\(vm.effectiveTranslationBatchSize())"
+                                            )
+                                        }
+
+                                        Text(
+                                            vm.settings.useCustomTranslationBatchSize
+                                            ? ui("已启用自定义批量大小。批量越大，请求越少，但更容易触发 429 或格式不稳定。", "Custom batch size is enabled. Larger batches mean fewer requests, but they are more likely to trigger 429s or formatting instability.")
+                                            : ui("当前使用推荐批量大小，会根据翻译引擎和模式自动选择更稳妥的值。", "The recommended batch size is active and will use safer defaults based on the selected backend and mode.")
+                                        )
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -498,6 +601,7 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
 
                         Spacer(minLength: 0)
                         statusPill(
@@ -511,12 +615,14 @@ struct ContentView: View {
                             vm.translateSubtitle()
                         }
                         .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
                         Button(ui("终止任务", "Stop Task")) {
                             vm.cancelCurrentTask()
                         }
                         .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .translateSubtitle)
                     }
                 }
@@ -554,6 +660,7 @@ struct ContentView: View {
                         vm.cancelCurrentTask()
                     }
                     .buttonStyle(.borderedProminent)
+                        .hoverAnimatedButton()
                     .tint(.red)
                 }
 
@@ -725,5 +832,32 @@ struct ContentView: View {
             UTType(filenameExtension: ext)
         }
         return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+}
+
+private struct HoverAnimatedButtonModifier: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isEnabled && isHovering ? 1.02 : 1.0)
+            .shadow(
+                color: Color.black.opacity(isEnabled && isHovering ? 0.12 : 0.0),
+                radius: isEnabled && isHovering ? 14 : 0,
+                x: 0,
+                y: isEnabled && isHovering ? 6 : 0
+            )
+            .animation(.easeOut(duration: 0.16), value: isHovering)
+            .animation(.easeOut(duration: 0.16), value: isEnabled)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+    }
+}
+
+private extension View {
+    func hoverAnimatedButton() -> some View {
+        modifier(HoverAnimatedButtonModifier())
     }
 }

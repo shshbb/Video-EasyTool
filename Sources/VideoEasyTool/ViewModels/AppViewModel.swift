@@ -37,6 +37,13 @@ final class AppViewModel: ObservableObject {
         self.settings = settingsStore.load()
         normalizeSettingsToRelativePaths()
         ensureAppInternalDirectories()
+        if settings.customTranslationBatchSize <= 0 {
+            settings.customTranslationBatchSize = recommendedTranslationBatchSize(
+                provider: settings.provider,
+                mode: settings.translationMode,
+                model: settings.translationModel
+            )
+        }
         self.modelStatusText = self.ui("未检测", "Not checked")
     }
 
@@ -218,15 +225,7 @@ final class AppViewModel: ObservableObject {
             let client = try OpenAICompatibleClient(baseURL: self.settings.openAIBaseURL, apiKey: self.settings.openAIAPIKey)
             let translator = try self.makeTranslator(settings: self.settings, client: client)
             let texts = cues.map(\.text)
-            // For Ollama, use segmented sending (5 cues per request)
-            // so cancellation/exit can still stop by not issuing subsequent requests.
-            let batchSize = (self.settings.provider == .ollama)
-                ? 5
-                : self.translationBatchSize(
-                    provider: self.settings.provider,
-                    mode: self.settings.translationMode,
-                    model: self.settings.translationModel
-                )
+            let batchSize = self.effectiveTranslationBatchSize()
             let totalBatches = max(1, Int(ceil(Double(texts.count) / Double(batchSize))))
             var translated: [String] = []
             await self.log("\(self.ui("翻译批次规划", "Translation batching")): \(totalBatches) \(self.ui("批，每批最多", "batches, up to")) \(batchSize) \(self.ui("条", "items"))")
@@ -589,22 +588,52 @@ final class AppViewModel: ObservableObject {
     private func makeTranslator(settings: AppSettings, client: OpenAICompatibleClient) throws -> TranslationService {
         switch settings.provider {
         case .openAICompatible:
-            return OpenAICompatibleTranslator(client: client, model: settings.translationModel)
+            return OpenAICompatibleTranslator(
+                client: client,
+                model: settings.translationModel,
+                temperature: settings.translationTemperature
+            )
         case .ollama:
-            return try OllamaTranslator(baseURL: settings.ollamaBaseURL, model: settings.ollamaModel)
+            return try OllamaTranslator(
+                baseURL: settings.ollamaBaseURL,
+                model: settings.ollamaModel,
+                temperature: settings.translationTemperature
+            )
         }
     }
 
-    private func translationBatchSize(provider: TranslationProvider, mode: TranslationMode, model: String) -> Int {
+    private func recommendedTranslationBatchSize(provider: TranslationProvider, mode: TranslationMode, model: String) -> Int {
+        if provider == .ollama {
+            return 5
+        }
         let isQwenMT = model.lowercased().contains("qwen-mt")
         switch (provider, mode) {
-        case (.ollama, .fast): return 1
-        case (.ollama, .balanced): return 2
-        case (.ollama, .quality): return 4
         case (.openAICompatible, .fast): return isQwenMT ? 5 : 8
         case (.openAICompatible, .balanced): return isQwenMT ? 5 : 12
         case (.openAICompatible, .quality): return isQwenMT ? 5 : 20
+        case (.ollama, _): return 5
         }
+    }
+
+    func effectiveTranslationBatchSize() -> Int {
+        if settings.useCustomTranslationBatchSize {
+            return max(1, settings.customTranslationBatchSize)
+        }
+        return recommendedTranslationBatchSize(
+            provider: settings.provider,
+            mode: settings.translationMode,
+            model: settings.translationModel
+        )
+    }
+
+    func resetTranslationAdvancedSettings() {
+        settings.translationTemperature = 0.1
+        settings.useCustomTranslationBatchSize = false
+        settings.customTranslationBatchSize = recommendedTranslationBatchSize(
+            provider: settings.provider,
+            mode: settings.translationMode,
+            model: settings.translationModel
+        )
     }
 
     private func repairLanguageDriftIfNeeded(
