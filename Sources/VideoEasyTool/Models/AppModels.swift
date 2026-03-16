@@ -116,6 +116,9 @@ struct AppSettings: Codable {
     var targetLanguage: TargetLanguage
     var provider: TranslationProvider
     var translationMode: TranslationMode
+    var translationTemperature: Double
+    var useCustomTranslationBatchSize: Bool
+    var customTranslationBatchSize: Int
     var displayLanguage: DisplayLanguage
 
     enum CodingKeys: String, CodingKey {
@@ -134,6 +137,9 @@ struct AppSettings: Codable {
         case targetLanguage
         case provider
         case translationMode
+        case translationTemperature
+        case useCustomTranslationBatchSize
+        case customTranslationBatchSize
         case displayLanguage
     }
 
@@ -152,6 +158,9 @@ struct AppSettings: Codable {
         targetLanguage: TargetLanguage,
         provider: TranslationProvider,
         translationMode: TranslationMode,
+        translationTemperature: Double,
+        useCustomTranslationBatchSize: Bool,
+        customTranslationBatchSize: Int,
         displayLanguage: DisplayLanguage
     ) {
         self.globalOutputDirectory = globalOutputDirectory
@@ -168,6 +177,9 @@ struct AppSettings: Codable {
         self.targetLanguage = targetLanguage
         self.provider = provider
         self.translationMode = translationMode
+        self.translationTemperature = translationTemperature
+        self.useCustomTranslationBatchSize = useCustomTranslationBatchSize
+        self.customTranslationBatchSize = customTranslationBatchSize
         self.displayLanguage = displayLanguage
     }
 
@@ -187,6 +199,9 @@ struct AppSettings: Codable {
         self.ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? AppSettings.default.ollamaModel
         self.provider = try container.decodeIfPresent(TranslationProvider.self, forKey: .provider) ?? AppSettings.default.provider
         self.translationMode = try container.decodeIfPresent(TranslationMode.self, forKey: .translationMode) ?? .balanced
+        self.translationTemperature = try container.decodeIfPresent(Double.self, forKey: .translationTemperature) ?? AppSettings.default.translationTemperature
+        self.useCustomTranslationBatchSize = try container.decodeIfPresent(Bool.self, forKey: .useCustomTranslationBatchSize) ?? AppSettings.default.useCustomTranslationBatchSize
+        self.customTranslationBatchSize = max(1, try container.decodeIfPresent(Int.self, forKey: .customTranslationBatchSize) ?? AppSettings.default.customTranslationBatchSize)
         self.displayLanguage = try container.decodeIfPresent(DisplayLanguage.self, forKey: .displayLanguage) ?? DisplayLanguage.systemDefault
 
         if let model = try? container.decode(TranscriptionModel.self, forKey: .transcriptionModel) {
@@ -224,6 +239,9 @@ struct AppSettings: Codable {
         try container.encode(targetLanguage, forKey: .targetLanguage)
         try container.encode(provider, forKey: .provider)
         try container.encode(translationMode, forKey: .translationMode)
+        try container.encode(translationTemperature, forKey: .translationTemperature)
+        try container.encode(useCustomTranslationBatchSize, forKey: .useCustomTranslationBatchSize)
+        try container.encode(customTranslationBatchSize, forKey: .customTranslationBatchSize)
         try container.encode(displayLanguage, forKey: .displayLanguage)
     }
 
@@ -242,6 +260,9 @@ struct AppSettings: Codable {
         targetLanguage: .simplifiedChinese,
         provider: .openAICompatible,
         translationMode: .balanced,
+        translationTemperature: 0.1,
+        useCustomTranslationBatchSize: false,
+        customTranslationBatchSize: 12,
         displayLanguage: .systemDefault
     )
 }

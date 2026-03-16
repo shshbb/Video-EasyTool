@@ -29,11 +29,13 @@ actor TranslationRateLimiter {
 final class OpenAICompatibleTranslator: TranslationService {
     private let client: OpenAICompatibleClient
     private let model: String
+    private let temperature: Double
     private let rateLimiter = TranslationRateLimiter()
 
-    init(client: OpenAICompatibleClient, model: String) {
+    init(client: OpenAICompatibleClient, model: String, temperature: Double) {
         self.client = client
         self.model = model
+        self.temperature = temperature
     }
 
     func translateBatch(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
@@ -93,7 +95,7 @@ final class OpenAICompatibleTranslator: TranslationService {
             "messages": [
                 ["role": "user", "content": prompt]
             ],
-            "temperature": 0.1
+            "temperature": temperature
         ]
 
         let data = try await postWithRetry(body: body)
@@ -278,14 +280,16 @@ final class OpenAICompatibleTranslator: TranslationService {
 final class OllamaTranslator: TranslationService {
     private let baseURL: URL
     private let model: String
+    private let temperature: Double
     private let session: URLSession
 
-    init(baseURL: String, model: String) throws {
+    init(baseURL: String, model: String, temperature: Double) throws {
         guard let url = URL(string: baseURL) else {
             throw AppError.invalidResponse("Ollama baseURL 无效: \(baseURL)")
         }
         self.baseURL = url
         self.model = model
+        self.temperature = temperature
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 1800
         config.timeoutIntervalForResource = 7200
@@ -346,7 +350,7 @@ final class OllamaTranslator: TranslationService {
             "format": "json",
             "keep_alive": "0s",
             "options": [
-                "temperature": 0.1
+                "temperature": temperature
             ],
             "messages": [
                 ["role": "system", "content": "You are a precise subtitle translator."],
