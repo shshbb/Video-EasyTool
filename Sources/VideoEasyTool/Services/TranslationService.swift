@@ -1,7 +1,13 @@
 import Foundation
 
 protocol TranslationService {
-    func translateBatch(_ sourceTexts: [String], targetLanguage: String) async throws -> [String]
+    func translateBatch(_ sourceTexts: [String], targetLanguage: String, contextHint: [String]) async throws -> [String]
+}
+
+struct TokenUsage {
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
 }
 
 actor TranslationRateLimiter {
@@ -30,62 +36,70 @@ final class OpenAICompatibleTranslator: TranslationService {
     private let client: OpenAICompatibleClient
     private let model: String
     private let temperature: Double
+    private let onUsage: ((TokenUsage) -> Void)?
     private let rateLimiter = TranslationRateLimiter()
 
-    init(client: OpenAICompatibleClient, model: String, temperature: Double) {
+    init(client: OpenAICompatibleClient, model: String, temperature: Double, onUsage: ((TokenUsage) -> Void)? = nil) {
         self.client = client
         self.model = model
         self.temperature = temperature
+        self.onUsage = onUsage
     }
 
-    func translateBatch(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
-        return try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, depth: 0)
+    func translateBatch(_ sourceTexts: [String], targetLanguage: String, contextHint: [String] = []) async throws -> [String] {
+        return try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint, depth: 0)
     }
 
-    private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, depth: Int) async throws -> [String] {
+    private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, contextHint: [String], depth: Int) async throws -> [String] {
         if sourceTexts.isEmpty { return [] }
         if sourceTexts.count == 1 {
-            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage)
+            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint)
         }
 
         let totalChars = sourceTexts.reduce(0) { $0 + $1.count }
         if totalChars > 3200 && depth < 6 {
             let mid = sourceTexts.count / 2
-            let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, depth: depth + 1)
-            let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, depth: depth + 1)
+            let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
+            let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
             return left + right
         }
 
         do {
-            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage)
+            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint)
         } catch {
             if isFormatMismatch(error) && sourceTexts.count > 1 && depth < 8 {
                 let mid = sourceTexts.count / 2
-                let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, depth: depth + 1)
-                let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, depth: depth + 1)
+                let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
+                let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
                 return left + right
             }
             throw error
         }
     }
 
-    private func translateBatchOnce(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
+    private func translateBatchOnce(_ sourceTexts: [String], targetLanguage: String, contextHint: [String]) async throws -> [String] {
         // Use compact row format to reduce tokens while preserving subtitle order context.
         let rows = sourceTexts.enumerated().map { ["i": $0.offset + 1, "t": $0.element.replacingOccurrences(of: "\n", with: " ")] }
         let inputData = try JSONSerialization.data(withJSONObject: rows)
         let inputBlock = String(decoding: inputData, as: UTF8.self)
+        let targetInstruction = targetLanguageInstruction(for: targetLanguage)
+        let contextBlock = buildContextBlock(from: contextHint)
         let prompt = """
         You are a precise subtitle translator.
         Keep names, code, and numbers unchanged.
 
-        TL=\(targetLanguage)
+        Target language: \(targetInstruction)
         Task: subtitle translation with natural context across lines.
         Keep line count and order unchanged.
-        Every item MUST be translated to TL unless it is already in TL.
+        Every item MUST be translated into the target language above.
+        Output language must strictly follow the selected target language and nothing else.
+        If the target language is Chinese, output Chinese only. Do not output Vietnamese, Japanese, Korean, Thai, English, or any other language.
+        Preserve proper nouns, code, product names, URLs, and obvious brand names only when necessary, but the surrounding sentence must still be in the target language.
         Return STRICT JSON only:
         {"items":[{"i":1,"t":"..."},{"i":2,"t":"..."}]}
         Do not add wrappers like "Translation:".
         No markdown, no explanations.
+        \(contextBlock)
         Input:
         \(inputBlock)
         """
@@ -99,6 +113,9 @@ final class OpenAICompatibleTranslator: TranslationService {
         ]
 
         let data = try await postWithRetry(body: body)
+        if let usage = parseTokenUsage(from: data) {
+            onUsage?(usage)
+        }
         return try parseOpenAIChatContent(data: data, expectedCount: sourceTexts.count)
     }
 
@@ -212,29 +229,7 @@ final class OpenAICompatibleTranslator: TranslationService {
             }
         }
 
-        if let jsonData = content.data(using: .utf8),
-           let array = try? JSONSerialization.jsonObject(with: jsonData) as? [String],
-           array.count == expectedCount {
-            return array.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        }
-
-        let lines = content
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        var translations: [String] = []
-        for line in lines {
-            if let dot = line.firstIndex(of: ".") {
-                let text = line[line.index(after: dot)...].trimmingCharacters(in: .whitespaces)
-                if !text.isEmpty { translations.append(text) }
-            }
-        }
-
-        guard translations.count == expectedCount else {
-            throw AppError.parseFailed("翻译条数不一致: got=\(translations.count), expected=\(expectedCount)")
-        }
-        return translations
+        throw AppError.parseFailed("JSON 解析失败或翻译条数不一致")
     }
 
     private func isFormatMismatch(_ error: Error) -> Bool {
@@ -275,6 +270,56 @@ final class OpenAICompatibleTranslator: TranslationService {
         }
         return data
     }
+
+    private func targetLanguageInstruction(for code: String) -> String {
+        switch code.lowercased() {
+        case "zh-cn", "zh-hans", "zh":
+            return "Simplified Chinese. Output must be Chinese only."
+        case "zh-tw", "zh-hant":
+            return "Traditional Chinese. Output must be Chinese only."
+        case "en":
+            return "English."
+        case "ja":
+            return "Japanese."
+        case "ko":
+            return "Korean."
+        case "fr":
+            return "French."
+        case "de":
+            return "German."
+        case "es":
+            return "Spanish."
+        default:
+            return code
+        }
+    }
+
+    private func buildContextBlock(from contextHint: [String]) -> String {
+        let cleaned = contextHint
+            .map { $0.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return "" }
+        let rows = cleaned.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        return """
+        Context only (for consistency, do not translate or include in output):
+        \(rows)
+        """
+    }
+
+    private func parseTokenUsage(from data: Data) -> TokenUsage? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let usage = root["usage"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        let prompt = usage["prompt_tokens"] as? Int ?? 0
+        let completion = usage["completion_tokens"] as? Int ?? 0
+        let total = usage["total_tokens"] as? Int ?? (prompt + completion)
+        guard prompt > 0 || completion > 0 || total > 0 else { return nil }
+        return TokenUsage(promptTokens: prompt, completionTokens: completion, totalTokens: total)
+    }
 }
 
 final class OllamaTranslator: TranslationService {
@@ -296,50 +341,58 @@ final class OllamaTranslator: TranslationService {
         self.session = URLSession(configuration: config)
     }
 
-    func translateBatch(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
-        try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, depth: 0)
+    func translateBatch(_ sourceTexts: [String], targetLanguage: String, contextHint: [String] = []) async throws -> [String] {
+        try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint, depth: 0)
     }
 
-    private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, depth: Int) async throws -> [String] {
+    private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, contextHint: [String], depth: Int) async throws -> [String] {
         guard !sourceTexts.isEmpty else { return [] }
         if sourceTexts.count == 1 {
-            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage)
+            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint)
         }
 
         let totalChars = sourceTexts.reduce(0) { $0 + $1.count }
         if totalChars > 2400 && depth < 6 {
             let mid = sourceTexts.count / 2
-            let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, depth: depth + 1)
-            let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, depth: depth + 1)
+            let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
+            let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
             return left + right
         }
 
         do {
-            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage)
+            return try await translateBatchOnce(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint)
         } catch {
             if (isTimeout(error) || isFormatMismatch(error)), sourceTexts.count > 1, depth < 8 {
                 let mid = sourceTexts.count / 2
-                let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, depth: depth + 1)
-                let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, depth: depth + 1)
+                let left = try await translateBatchAdaptive(Array(sourceTexts[..<mid]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
+                let right = try await translateBatchAdaptive(Array(sourceTexts[mid...]), targetLanguage: targetLanguage, contextHint: contextHint, depth: depth + 1)
                 return left + right
             }
             throw error
         }
     }
 
-    private func translateBatchOnce(_ sourceTexts: [String], targetLanguage: String) async throws -> [String] {
+    private func translateBatchOnce(_ sourceTexts: [String], targetLanguage: String, contextHint: [String]) async throws -> [String] {
         let payloadInput = sourceTexts.enumerated().map { ["i": $0.offset + 1, "t": $0.element] }
         let inputData = try JSONSerialization.data(withJSONObject: payloadInput)
         let inputJSON = String(decoding: inputData, as: UTF8.self)
+        let targetInstruction = targetLanguageInstruction(for: targetLanguage)
+        let contextBlock = buildContextBlock(from: contextHint)
 
         let prompt = """
-        Translate subtitle items to \(targetLanguage) with context.
+        Translate subtitle items with context.
         Return STRICT JSON only:
         {"items":[{"i":1,"t":"..."},{"i":2,"t":"..."}]}
         Rules:
+        - Target language: \(targetInstruction)
         - Keep item count identical.
         - Keep i unchanged.
+        - Translate every item into the target language above.
+        - Output language must strictly follow the selected target language and nothing else.
+        - If the target language is Chinese, output Chinese only. Do not output Vietnamese, Japanese, Korean, Thai, English, or any other language.
+        - Preserve proper nouns, code, product names, URLs, and obvious brand names only when necessary, but the surrounding sentence must still be in the target language.
         - No extra fields, no markdown, no explanations.
+        \(contextBlock)
         Input:
         \(inputJSON)
         """
@@ -370,6 +423,41 @@ final class OllamaTranslator: TranslationService {
         let cleanedContent = stripThinkBlocks(in: content)
 
         return try parseStrictJSONOrFallback(content: cleanedContent, expectedCount: sourceTexts.count)
+    }
+
+    private func targetLanguageInstruction(for code: String) -> String {
+        switch code.lowercased() {
+        case "zh-cn", "zh-hans", "zh":
+            return "Simplified Chinese. Output must be Chinese only."
+        case "zh-tw", "zh-hant":
+            return "Traditional Chinese. Output must be Chinese only."
+        case "en":
+            return "English."
+        case "ja":
+            return "Japanese."
+        case "ko":
+            return "Korean."
+        case "fr":
+            return "French."
+        case "de":
+            return "German."
+        case "es":
+            return "Spanish."
+        default:
+            return code
+        }
+    }
+
+    private func buildContextBlock(from contextHint: [String]) -> String {
+        let cleaned = contextHint
+            .map { $0.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return "" }
+        let rows = cleaned.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        return """
+        Context only (for consistency, do not translate or include in output):
+        \(rows)
+        """
     }
 
     private func streamChatContent(request: URLRequest) async throws -> String {
@@ -453,30 +541,12 @@ final class OllamaTranslator: TranslationService {
             return strict
         }
 
-        // Fallback: numbered line parse with best-effort truncation.
-        let lines = content
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        var translations: [String] = []
-        for line in lines {
-            if let dot = line.firstIndex(of: ".") {
-                let text = line[line.index(after: dot)...].trimmingCharacters(in: .whitespaces)
-                if !text.isEmpty { translations.append(text) }
-            }
-        }
-
-        if translations.count >= expectedCount {
-            return Array(translations.prefix(expectedCount))
-        }
-
         if expectedCount == 1 {
             let one = normalizeSingleTranslation(content)
             if !one.isEmpty { return [one] }
         }
 
-        throw AppError.parseFailed("Ollama 翻译条数不一致: got=\(translations.count), expected=\(expectedCount)")
+        throw AppError.parseFailed("Ollama JSON 解析失败或翻译条数不一致")
     }
 
     private func parseStrictItemsJSON(content: String, expectedCount: Int) -> [String]? {

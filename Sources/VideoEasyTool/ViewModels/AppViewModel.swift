@@ -19,6 +19,10 @@ final class AppViewModel: ObservableObject {
     @Published var showMissingToolAlert: Bool = false
     @Published var missingToolName: String = ""
     @Published var missingToolInstallHint: String = ""
+    @Published var showPlaylistChoiceAlert: Bool = false
+    @Published var translationPromptTokens: Int = 0
+    @Published var translationCompletionTokens: Int = 0
+    @Published var translationTotalTokens: Int = 0
 
     private let downloader = YouTubeDownloader()
     private let transcoder = VideoTranscoder()
@@ -32,6 +36,7 @@ final class AppViewModel: ObservableObject {
     private var userCancelledTask: Bool = false
     private var cleanupFilesOnCancel: Set<String> = []
     private var cleanupDirectoriesOnCancel: Set<String> = []
+    private var pendingPlaylistDownloadURL: String?
 
     init() {
         self.settings = settingsStore.load()
@@ -74,18 +79,48 @@ final class AppViewModel: ObservableObject {
     }
 
     func downloadVideo() {
-        guard !youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedURL = youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty else {
             logs.append("\n\(self.ui("请输入 YouTube 链接", "Please enter a YouTube URL"))")
             return
         }
+
+        if shouldConfirmPlaylistChoice(for: trimmedURL) {
+            pendingPlaylistDownloadURL = trimmedURL
+            showPlaylistChoiceAlert = true
+            return
+        }
+
+        startDownload(url: trimmedURL, allowPlaylist: false)
+    }
+
+    func downloadOnlyCurrentVideo() {
+        let url = pendingPlaylistDownloadURL ?? youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingPlaylistDownloadURL = nil
+        showPlaylistChoiceAlert = false
+        guard !url.isEmpty else { return }
+        startDownload(url: url, allowPlaylist: false)
+    }
+
+    func downloadEntirePlaylist() {
+        let url = pendingPlaylistDownloadURL ?? youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingPlaylistDownloadURL = nil
+        showPlaylistChoiceAlert = false
+        guard !url.isEmpty else { return }
+        startDownload(url: url, allowPlaylist: true)
+    }
+
+    private func startDownload(url: String, allowPlaylist: Bool) {
+        youtubeURL = url
 
         runTask(kind: .downloadVideo, startMessage: self.ui("开始下载视频", "Starting video download")) {
             let cacheDir = try self.createTaskCacheDirectory(prefix: "download")
             self.registerCleanupDirectory(cacheDir)
 
             let result = try await self.downloader.download(
-                url: self.youtubeURL,
+                url: url,
                 outputDirectory: self.resolveAppPath(self.settings.downloadOutputDirectory),
+                allowPlaylist: allowPlaylist,
                 tempDirectory: cacheDir,
                 onOutput: { chunk in
                     Task { @MainActor in
@@ -111,6 +146,14 @@ final class AppViewModel: ObservableObject {
             self.taskProgress = 1
             await self.log("\(self.ui("下载完成", "Download completed")): \(result.videoPath)")
         }
+    }
+
+    private func shouldConfirmPlaylistChoice(for urlString: String) -> Bool {
+        guard let components = URLComponents(string: urlString),
+              let queryItems = components.queryItems else {
+            return false
+        }
+        return queryItems.contains { $0.name.caseInsensitiveCompare("list") == .orderedSame && !($0.value?.isEmpty ?? true) }
     }
 
     func transcodeVideo() {
@@ -218,6 +261,9 @@ final class AppViewModel: ObservableObject {
         runTask(kind: .translateSubtitle, startMessage: self.ui("开始翻译字幕", "Starting subtitle translation")) {
             await MainActor.run {
                 self.taskProgress = 0
+                self.translationPromptTokens = 0
+                self.translationCompletionTokens = 0
+                self.translationTotalTokens = 0
             }
 
             let cues = try self.subtitleService.parseSRT(path: self.selectedSubtitlePath)
@@ -234,12 +280,18 @@ final class AppViewModel: ObservableObject {
                 let start = batchIndex * batchSize
                 let end = min(start + batchSize, texts.count)
                 let batch = Array(texts[start..<end])
-                let part = try await translator.translateBatch(batch, targetLanguage: self.settings.targetLanguage.code)
+                let contextHint = self.translationContextHint(from: texts, startIndex: start)
+                let part = try await translator.translateBatch(
+                    batch,
+                    targetLanguage: self.settings.targetLanguage.code,
+                    contextHint: contextHint
+                )
                 let repaired = try await self.repairLanguageDriftIfNeeded(
                     sourceBatch: batch,
                     translatedBatch: part,
                     targetLanguageCode: self.settings.targetLanguage.code,
                     translator: translator,
+                    contextHint: contextHint,
                     batchIndex: batchIndex + 1,
                     totalBatches: totalBatches
                 )
@@ -250,6 +302,11 @@ final class AppViewModel: ObservableObject {
                     self.taskProgress = ratio * 0.95
                 }
                 await self.log("\(self.ui("翻译进度", "Translation progress")): \(batchIndex + 1)/\(totalBatches)")
+                if self.settings.provider == .openAICompatible {
+                    await self.log(
+                        "\(self.ui("Token 用量", "Token usage")): \(self.translationTokenUsageText)"
+                    )
+                }
             }
 
             let bilingual = try self.subtitleService.buildBilingualCues(original: cues, translatedTexts: translated)
@@ -591,7 +648,14 @@ final class AppViewModel: ObservableObject {
             return OpenAICompatibleTranslator(
                 client: client,
                 model: settings.translationModel,
-                temperature: settings.translationTemperature
+                temperature: settings.translationTemperature,
+                onUsage: { usage in
+                    Task { @MainActor in
+                        self.translationPromptTokens += usage.promptTokens
+                        self.translationCompletionTokens += usage.completionTokens
+                        self.translationTotalTokens += usage.totalTokens
+                    }
+                }
             )
         case .ollama:
             return try OllamaTranslator(
@@ -606,11 +670,8 @@ final class AppViewModel: ObservableObject {
         if provider == .ollama {
             return 5
         }
-        let isQwenMT = model.lowercased().contains("qwen-mt")
         switch (provider, mode) {
-        case (.openAICompatible, .fast): return isQwenMT ? 5 : 8
-        case (.openAICompatible, .balanced): return isQwenMT ? 5 : 12
-        case (.openAICompatible, .quality): return isQwenMT ? 5 : 20
+        case (.openAICompatible, _): return 10
         case (.ollama, _): return 5
         }
     }
@@ -641,6 +702,7 @@ final class AppViewModel: ObservableObject {
         translatedBatch: [String],
         targetLanguageCode: String,
         translator: TranslationService,
+        contextHint: [String],
         batchIndex: Int,
         totalBatches: Int
     ) async throws -> [String] {
@@ -648,17 +710,23 @@ final class AppViewModel: ObservableObject {
             return translatedBatch
         }
 
-        guard isLanguageMismatch(text: translatedBatch.joined(separator: " "), targetLanguageCode: targetLanguageCode) else {
+        let mismatchCount = translatedBatch.filter { isLanguageMismatch(text: $0, targetLanguageCode: targetLanguageCode) }.count
+        guard mismatchCount > 0 else {
             return translatedBatch
         }
 
-        await log("\(self.ui("检测到语言漂移，整批重译", "Language drift detected, retranslating batch")): \(batchIndex)/\(totalBatches)")
+        await log("\(self.ui("检测到语言漂移，整批重译", "Language drift detected, retranslating batch")): \(batchIndex)/\(totalBatches) (\(mismatchCount) \(self.ui("条疑似偏离目标语言", "items may be off-target")))")
         var latest = translatedBatch
         for _ in 0..<2 {
-            let retried = try await translator.translateBatch(sourceBatch, targetLanguage: targetLanguageCode)
+            let retried = try await translator.translateBatch(
+                sourceBatch,
+                targetLanguage: targetLanguageCode,
+                contextHint: contextHint
+            )
             if retried.count == sourceBatch.count {
                 latest = retried
-                if !isLanguageMismatch(text: retried.joined(separator: " "), targetLanguageCode: targetLanguageCode) {
+                let retriedMismatchCount = retried.filter { isLanguageMismatch(text: $0, targetLanguageCode: targetLanguageCode) }.count
+                if retriedMismatchCount == 0 {
                     return retried
                 }
             }
@@ -666,6 +734,16 @@ final class AppViewModel: ObservableObject {
 
         await log(self.ui("警告：该批次重译后仍可能偏离目标语言，已保留最后结果", "Warning: this batch may still deviate from the target language after retry; keeping the latest result"))
         return latest
+    }
+
+    private func translationContextHint(from texts: [String], startIndex: Int) -> [String] {
+        guard startIndex > 0 else { return [] }
+        let contextStart = max(0, startIndex - 2)
+        return Array(texts[contextStart..<startIndex])
+    }
+
+    var translationTokenUsageText: String {
+        "\(self.ui("总计", "Total")) \(translationTotalTokens) · \(self.ui("输入", "Input")) \(translationPromptTokens) · \(self.ui("输出", "Output")) \(translationCompletionTokens)"
     }
 
     private func isLanguageMismatch(text: String, targetLanguageCode: String) -> Bool {

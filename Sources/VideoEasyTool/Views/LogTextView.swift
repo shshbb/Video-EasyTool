@@ -41,11 +41,14 @@ struct LogTextView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
 
-        let shouldAutoScroll = context.coordinator.isNearBottom(in: nsView)
+        let shouldAutoScroll = context.coordinator.shouldAutoScroll
         textView.string = text
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
 
         if shouldAutoScroll {
-            textView.scrollToEndOfDocument(nil)
+            DispatchQueue.main.async {
+                context.coordinator.scrollToBottom()
+            }
         }
     }
 
@@ -56,18 +59,25 @@ struct LogTextView: NSViewRepresentable {
     final class Coordinator: NSObject {
         weak var scrollView: NSScrollView?
         weak var textView: NSTextView?
+        var shouldAutoScroll: Bool = true
 
         @objc
         func boundsDidChange(_ notification: Notification) {
-            // Intentionally left blank. We keep this observer to make sure
-            // user scroll state is respected by checking near-bottom on updates.
+            guard let scrollView else { return }
+            shouldAutoScroll = isNearBottom(in: scrollView)
         }
 
         func isNearBottom(in scrollView: NSScrollView) -> Bool {
             guard let documentView = scrollView.documentView else { return true }
             let visibleMaxY = scrollView.contentView.bounds.maxY
             let contentHeight = documentView.frame.height
-            return contentHeight - visibleMaxY < 16
+            return contentHeight - visibleMaxY < 24
+        }
+
+        func scrollToBottom() {
+            guard let textView else { return }
+            textView.scrollToEndOfDocument(nil)
+            shouldAutoScroll = true
         }
     }
 }

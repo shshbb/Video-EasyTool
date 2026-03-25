@@ -66,6 +66,17 @@ struct ContentView: View {
         } message: {
             Text("\(ui("缺少工具", "Missing tool")): \(vm.missingToolName)\n\(vm.missingToolInstallHint)")
         }
+        .alert(ui("检测到播放列表", "Playlist Detected"), isPresented: $vm.showPlaylistChoiceAlert) {
+            Button(ui("只下载当前视频", "Download This Video Only")) {
+                vm.downloadOnlyCurrentVideo()
+            }
+            Button(ui("下载整个列表", "Download Entire Playlist")) {
+                vm.downloadEntirePlaylist()
+            }
+            Button(ui("取消", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(ui("这个链接包含播放列表信息。请选择只下载当前视频，或下载整个播放列表。", "This link contains playlist information. Choose whether to download only the current video or the entire playlist."))
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             vm.handleAppTermination()
         }
@@ -624,6 +635,14 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                         .hoverAnimatedButton()
                         .disabled(vm.runningTaskKind != .translateSubtitle)
+
+                        if vm.settings.provider == .openAICompatible {
+                            Spacer(minLength: 0)
+                            statusPill(
+                                title: ui("Token 用量", "Token Usage"),
+                                value: vm.translationTotalTokens == 0 ? ui("等待开始", "Waiting") : vm.translationTokenUsageText
+                            )
+                        }
                     }
                 }
             }

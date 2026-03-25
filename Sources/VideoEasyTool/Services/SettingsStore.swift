@@ -2,8 +2,6 @@ import Foundation
 
 final class SettingsStore {
     private let fileURL: URL
-    private let keychain = KeychainStore()
-    private let openAIAPIKeyAccount = "openai_api_key"
 
     init() {
         let base = FileManager.default.homeDirectoryForCurrentUser
@@ -14,40 +12,15 @@ final class SettingsStore {
 
     func load() -> AppSettings {
         guard let data = try? Data(contentsOf: fileURL) else {
-            var settings = AppSettings.default
-            settings.openAIAPIKey = keychain.read(account: openAIAPIKeyAccount) ?? ""
-            return settings
+            return .default
         }
 
-        var settings = (try? JSONDecoder().decode(AppSettings.self, from: data)) ?? .default
-        let legacyAPIKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let keychainAPIKey = keychain.read(account: openAIAPIKeyAccount)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if !keychainAPIKey.isEmpty {
-            settings.openAIAPIKey = keychainAPIKey
-        } else if !legacyAPIKey.isEmpty {
-            keychain.write(legacyAPIKey, account: openAIAPIKeyAccount)
-            settings.openAIAPIKey = legacyAPIKey
-            save(settings)
-        } else {
-            settings.openAIAPIKey = ""
-        }
-
-        return settings
+        return (try? JSONDecoder().decode(AppSettings.self, from: data)) ?? .default
     }
 
     func save(_ settings: AppSettings) {
-        let apiKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if apiKey.isEmpty {
-            keychain.delete(account: openAIAPIKeyAccount)
-        } else {
-            keychain.write(apiKey, account: openAIAPIKeyAccount)
-        }
-
         do {
-            var sanitized = settings
-            sanitized.openAIAPIKey = ""
-            let data = try JSONEncoder().encode(sanitized)
+            let data = try JSONEncoder().encode(settings)
             try data.write(to: fileURL, options: .atomic)
         } catch {
             // No-op: keep UI responsive even if persistence fails.
