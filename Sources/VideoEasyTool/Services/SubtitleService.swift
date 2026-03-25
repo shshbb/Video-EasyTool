@@ -73,19 +73,28 @@ struct SubtitleService {
             if text.isEmpty { continue }
 
             let normalized = normalizeTextForCompare(text)
+            let fillerLightNormalized = normalizeTextForCompare(text, removingFillerWords: true)
             let start = cue.start
             let end = max(cue.end, cue.start + 0.02)
             let duration = max(cue.end - cue.start, 0)
 
             if let last = compacted.last {
                 let lastNormalized = normalizeTextForCompare(last.text)
+                let lastFillerLightNormalized = normalizeTextForCompare(last.text, removingFillerWords: true)
                 let sameText = normalized == lastNormalized
+                let sameMeaning = fillerLightNormalized == lastFillerLightNormalized
+                let containedVariant = normalized.count >= 6 && lastNormalized.count >= 6 && (
+                    normalized.contains(lastNormalized) || lastNormalized.contains(normalized) ||
+                    fillerLightNormalized.contains(lastFillerLightNormalized) || lastFillerLightNormalized.contains(fillerLightNormalized)
+                )
                 let timeNear = start <= last.end + 0.20
                 let sameStart = abs(start - last.start) <= 0.12
+                let overlapping = start <= last.end + 0.02
                 let currentZeroLike = duration <= 0.08
                 let lastZeroLike = (last.end - last.start) <= 0.08
 
-                if sameText && (timeNear || sameStart) && (currentZeroLike || lastZeroLike || sameStart) {
+                if (sameText || sameMeaning || containedVariant) && (timeNear || sameStart || overlapping) &&
+                    (currentZeroLike || lastZeroLike || sameStart || overlapping || sameMeaning) {
                     let merged = SubtitleCue(
                         id: last.id,
                         start: min(last.start, start),
@@ -150,11 +159,24 @@ struct SubtitleService {
         return String(format: "%02d:%02d:%02d,%03d", hours, minutes, seconds, millis)
     }
 
-    private func normalizeTextForCompare(_ text: String) -> String {
-        text
+    private func normalizeTextForCompare(_ text: String, removingFillerWords: Bool = false) -> String {
+        let fillerWords = Set(["uh", "um", "erm", "ah", "eh", "huh", "mm", "hmm"])
+        let tokens = text
             .lowercased()
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
-            .joined(separator: " ")
+
+        let cleanedTokens = tokens.map {
+            $0.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.symbols))
+        }
+
+        let filteredTokens: [String]
+        if removingFillerWords {
+            filteredTokens = cleanedTokens.filter { !fillerWords.contains($0) }
+        } else {
+            filteredTokens = cleanedTokens
+        }
+
+        return filteredTokens.joined(separator: " ")
     }
 }

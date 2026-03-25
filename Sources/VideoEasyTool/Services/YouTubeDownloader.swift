@@ -9,6 +9,7 @@ struct YouTubeDownloader {
     func download(
         url: String,
         outputDirectory: String,
+        allowPlaylist: Bool = false,
         tempDirectory: String? = nil,
         onOutput: ((String) -> Void)? = nil,
         onProgress: ((Double) -> Void)? = nil,
@@ -21,9 +22,14 @@ struct YouTubeDownloader {
         var args: [String] = [
             "-f", "bv*+ba/b",
             "--newline",
+            "--extractor-retries", "3",
+            "--sleep-requests", "1",
+            "--sleep-interval", "1",
+            "--max-sleep-interval", "3",
             "--merge-output-format", "mp4",
             "-o", outputTemplate
         ]
+        args.insert(allowPlaylist ? "--yes-playlist" : "--no-playlist", at: 0)
         if let tempDirectory {
             args.append(contentsOf: ["-P", "temp:\(tempDirectory)"])
         }
