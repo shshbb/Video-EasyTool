@@ -2,18 +2,18 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-`Video Easy Tool` 是一个原生 macOS 应用，用于下载 YouTube 视频、使用本地 Whisper 模型转录字幕、通过 OpenAI 兼容接口或 Ollama 翻译字幕，并导出双语字幕文件。
+`Video Easy Tool` 是一个原生 macOS 应用，用于下载 YouTube 和哔哩哔哩视频、使用本地 Whisper 模型转录字幕、通过 OpenAI 兼容接口或 Ollama 翻译字幕，并导出双语字幕文件。
 
 ## 功能特性
 
-- 使用 `yt-dlp` 下载 YouTube 视频
+- 使用 `yt-dlp` 下载 YouTube 和哔哩哔哩视频
 - 使用本地 Whisper 模型转录本地视频
 - 使用以下方式翻译字幕：
   - OpenAI 兼容聊天补全接口
   - Ollama 本地模型
 - 导出双语 `.srt` 字幕
-- 使用 `ffmpeg` 转码本地视频
-- 下载、转录、翻译、转码都可以独立执行
+- 使用 `ffmpeg` 编辑本地视频，包括剪辑和转码
+- 下载、转录、翻译、视频编辑都可以独立执行
 
 ## 环境要求
 
@@ -28,7 +28,7 @@
 - 推荐直接从 [Releases](https://github.com/shshbb/Video-EasyTool/releases) 下载最新的 `.dmg`
 - 应用本身面向 `macOS 14+`
 - 当前提供的安装包仅支持 Apple Silicon（M 系列）Mac，不支持 Intel Mac
-- 视频下载、转码和本地转录仍然依赖目标机器上已安装的外部工具：
+- 视频下载、视频编辑和本地转录仍然依赖目标机器上已安装的外部工具：
   - `yt-dlp`
   - `ffmpeg`
   - `whisper-cpp` 提供的 `whisper-cli`
@@ -82,7 +82,7 @@ swift build -c release
 
 ### 1. 下载视频
 
-- 粘贴 YouTube 链接
+- 粘贴 YouTube 或哔哩哔哩链接
 - 选择输出目录
 - 下载源视频到本地
 
@@ -100,11 +100,12 @@ swift build -c release
 - 选择翻译后端
 - 生成 `*_bilingual.srt`
 
-### 4. 视频转码
+### 4. 视频编辑
 
 - 选择本地视频文件
+- 如有需要，填写开始时间和结束时间进行剪辑
 - 选择输出格式和 CRF
-- 导出转码文件
+- 导出编辑后的视频文件
 
 ## 翻译后端
 

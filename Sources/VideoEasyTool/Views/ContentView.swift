@@ -77,6 +77,11 @@ struct ContentView: View {
         } message: {
             Text(ui("这个链接包含播放列表信息。请选择只下载当前视频，或下载整个播放列表。", "This link contains playlist information. Choose whether to download only the current video or the entire playlist."))
         }
+        .alert(vm.cacheResultTitle, isPresented: $vm.showCacheResultAlert) {
+            Button(ui("确定", "OK"), role: .cancel) {}
+        } message: {
+            Text(vm.cacheResultMessage)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             vm.handleAppTermination()
         }
@@ -177,6 +182,13 @@ struct ContentView: View {
                         .hoverAnimatedButton()
                         .disabled(vm.isRunning)
 
+                        Button(ui("清除缓存", "Clear Cache")) {
+                            vm.clearAppCache()
+                        }
+                        .buttonStyle(.bordered)
+                        .hoverAnimatedButton()
+                        .disabled(vm.isRunning)
+
                         Button(ui("保存设置", "Save Settings")) {
                             vm.saveSettings()
                         }
@@ -193,7 +205,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("下载视频", "Download Video"),
-                subtitle: ui("输入 YouTube 链接并直接保存到目标目录。", "Paste a YouTube link and save it directly to your target folder."),
+                subtitle: ui("输入 YouTube 或哔哩哔哩链接并直接保存到目标目录。", "Paste a YouTube or Bilibili link and save it directly to your target folder."),
                 symbol: "arrow.down.circle.fill"
             )
 
@@ -213,8 +225,14 @@ struct ContentView: View {
                     }
 
                     formRow(ui("视频链接", "Video URL")) {
-                        TextField("https://www.youtube.com/watch?v=...", text: $vm.youtubeURL)
+                        TextField("https://www.youtube.com/watch?v=... / https://www.bilibili.com/video/...", text: $vm.youtubeURL)
                             .textFieldStyle(.roundedBorder)
+                            .onChange(of: vm.youtubeURL) { _, newValue in
+                                let sanitized = sanitizeSingleLine(newValue)
+                                if sanitized != newValue {
+                                    vm.youtubeURL = sanitized
+                                }
+                            }
                     }
 
                     HStack(spacing: 12) {
@@ -369,8 +387,8 @@ struct ContentView: View {
     private var transcodeView: some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
-                title: ui("视频转码", "Video Transcode"),
-                subtitle: ui("调整格式和压缩强度，导出更适合分发的视频文件。", "Choose a format and compression level for a distribution-ready video file."),
+                title: ui("视频编辑", "Video Edit"),
+                subtitle: ui("支持 ffmpeg 直接剪辑片段，也可以继续调整格式和压缩强度导出。", "Clip a segment with ffmpeg directly, or keep using format and compression controls for export."),
                 symbol: "film.stack.fill"
             )
 
@@ -421,8 +439,25 @@ struct ContentView: View {
                             .frame(maxWidth: 140)
                     }
 
+                    formRow(ui("开始时间", "Start Time")) {
+                        TextField("00:00:00", text: $vm.selectedClipStartTime)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 180, alignment: .leading)
+                    }
+
+                    formRow(ui("结束时间", "End Time")) {
+                        TextField("00:00:10", text: $vm.selectedClipEndTime)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 180, alignment: .leading)
+                    }
+
+                    Text(ui("开始和结束时间留空时执行普通转码；填写后会按该时间段剪辑并输出。时间格式支持 HH:MM:SS 或 MM:SS。", "Leave start and end empty for normal transcoding. Fill them in to clip that time range and export it. Supported formats: HH:MM:SS or MM:SS."))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     HStack(spacing: 12) {
-                        Button(ui("执行转码", "Run Transcode")) {
+                        Button(ui("执行视频编辑", "Run Video Edit")) {
                             vm.transcodeVideo()
                         }
                         .buttonStyle(.borderedProminent)
@@ -802,10 +837,16 @@ struct ContentView: View {
         vm.settings.displayLanguage == .english ? en : zh
     }
 
+    private func sanitizeSingleLine(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+    }
+
     private func sidebarTitle(for section: SidebarSection) -> String {
         switch section {
         case .download: return ui("下载视频", "Download")
-        case .transcode: return ui("视频转码", "Transcode")
+        case .transcode: return ui("视频编辑", "Edit")
         case .transcribe: return ui("转录字幕", "Transcribe")
         case .translate: return ui("翻译字幕", "Translate")
         case .logs: return ui("日志", "Logs")
@@ -816,7 +857,7 @@ struct ContentView: View {
     private func sidebarSubtitle(for section: SidebarSection) -> String {
         switch section {
         case .download: return ui("抓取与保存视频", "Fetch and save videos")
-        case .transcode: return ui("转换格式与压缩", "Convert format and bitrate")
+        case .transcode: return ui("剪辑、转码与导出", "Trim, transcode, and export")
         case .transcribe: return ui("本地 Whisper 转录", "Local Whisper transcription")
         case .translate: return ui("双语字幕导出", "Bilingual subtitle export")
         case .logs: return ui("查看实时输出", "Inspect runtime output")

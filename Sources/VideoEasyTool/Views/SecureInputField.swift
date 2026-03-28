@@ -39,7 +39,13 @@ struct SecureInputField: NSViewRepresentable {
 
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSSecureTextField else { return }
-            text = field.stringValue
+            let sanitized = field.stringValue
+                .replacingOccurrences(of: "\r", with: "")
+                .replacingOccurrences(of: "\n", with: "")
+            if field.stringValue != sanitized {
+                field.stringValue = sanitized
+            }
+            text = sanitized
         }
     }
 }

@@ -2,18 +2,18 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-A native macOS app for downloading YouTube videos, transcribing subtitles with local Whisper models, translating subtitles with OpenAI-compatible APIs or Ollama, and exporting bilingual subtitle files.
+A native macOS app for downloading videos from YouTube and Bilibili, transcribing subtitles with local Whisper models, translating subtitles with OpenAI-compatible APIs or Ollama, and exporting bilingual subtitle files.
 
 ## Features
 
-- Download YouTube videos with `yt-dlp`
+- Download videos from YouTube and Bilibili with `yt-dlp`
 - Transcribe local video files with local Whisper models
 - Translate subtitles with:
   - OpenAI-compatible chat completion APIs
   - Ollama local models
 - Export bilingual `.srt` subtitles
-- Transcode local video files with `ffmpeg`
-- Run download, transcription, translation, and transcoding independently
+- Edit local video files with `ffmpeg`, including trimming and transcoding
+- Run download, transcription, translation, and video editing independently
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Packaged app users:
 - Download the latest `.dmg` from [Releases](https://github.com/shshbb/Video-EasyTool/releases)
 - The app itself targets `macOS 14+`
 - Current packaged builds are Apple Silicon only and do not support Intel Macs
-- Video download, transcoding, and local transcription still rely on external tools installed on the machine:
+- Video download, video editing, and local transcription still rely on external tools installed on the machine:
   - `yt-dlp`
   - `ffmpeg`
   - `whisper-cli` from `whisper-cpp`
@@ -82,7 +82,7 @@ Current packaged artifacts are written to:
 
 ### 1. Download video
 
-- Paste a YouTube URL
+- Paste a YouTube or Bilibili URL
 - Choose an output directory
 - Download the source video locally
 
@@ -100,11 +100,12 @@ Current packaged artifacts are written to:
 - Choose a translation backend
 - Generate `*_bilingual.srt`
 
-### 4. Transcode video
+### 4. Edit video
 
 - Select a local video file
+- Optionally set a start time and end time to trim the clip
 - Choose output format and CRF
-- Export a transcoded file
+- Export an edited file
 
 ## Translation Backends
 

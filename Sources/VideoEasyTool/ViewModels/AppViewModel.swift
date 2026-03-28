@@ -8,6 +8,8 @@ final class AppViewModel: ObservableObject {
     @Published var selectedTranscodeInputPath: String = ""
     @Published var selectedTranscodeFormat: String = "mp4"
     @Published var selectedTranscodeCRF: String = "23"
+    @Published var selectedClipStartTime: String = ""
+    @Published var selectedClipEndTime: String = ""
     @Published var selectedSubtitlePath: String = ""
     @Published var settings: AppSettings
     @Published var logs: String = ""
@@ -23,6 +25,9 @@ final class AppViewModel: ObservableObject {
     @Published var translationPromptTokens: Int = 0
     @Published var translationCompletionTokens: Int = 0
     @Published var translationTotalTokens: Int = 0
+    @Published var showCacheResultAlert: Bool = false
+    @Published var cacheResultTitle: String = ""
+    @Published var cacheResultMessage: String = ""
 
     private let downloader = YouTubeDownloader()
     private let transcoder = VideoTranscoder()
@@ -37,6 +42,7 @@ final class AppViewModel: ObservableObject {
     private var cleanupFilesOnCancel: Set<String> = []
     private var cleanupDirectoriesOnCancel: Set<String> = []
     private var pendingPlaylistDownloadURL: String?
+    private var rawLogCarryover: String = ""
 
     init() {
         self.settings = settingsStore.load()
@@ -56,6 +62,13 @@ final class AppViewModel: ObservableObject {
         settingsStore.save(settings)
     }
 
+    var shouldWarnBeforeClosingWindow: Bool {
+        if isRunning { return true }
+        if let activeProcess, activeProcess.isRunning { return true }
+        if activeTask != nil { return true }
+        return false
+    }
+
     func cancelCurrentTask() {
         guard isRunning else { return }
         stopOllamaIfNeeded(trigger: self.ui("任务终止", "Task stopped"))
@@ -64,6 +77,8 @@ final class AppViewModel: ObservableObject {
         if let process = activeProcess, process.isRunning {
             ProcessRunner.terminateProcessTree(process)
         }
+        currentTaskTitle = ""
+        taskProgress = nil
         cleanupTaskArtifacts()
         appendRawLog("\n[INFO] \(self.ui("任务终止请求已发送，缓存与临时文件已清理。", "Stop request sent. Cache and temporary files were cleaned."))\n")
     }
@@ -76,12 +91,14 @@ final class AppViewModel: ObservableObject {
         if let process = activeProcess, process.isRunning {
             ProcessRunner.terminateProcessTree(process)
         }
+        currentTaskTitle = ""
+        taskProgress = nil
     }
 
     func downloadVideo() {
         let trimmedURL = youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedURL.isEmpty else {
-            logs.append("\n\(self.ui("请输入 YouTube 链接", "Please enter a YouTube URL"))")
+            appendRawLog(self.ui("请输入 YouTube 或哔哩哔哩链接", "Please enter a YouTube or Bilibili URL") + "\n")
             return
         }
 
@@ -158,18 +175,37 @@ final class AppViewModel: ObservableObject {
 
     func transcodeVideo() {
         guard !selectedTranscodeInputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n\(self.ui("请先选择要转码的视频文件", "Please choose a video file to transcode"))")
+            appendRawLog(self.ui("请先选择要转码的视频文件", "Please choose a video file to transcode") + "\n")
             return
         }
         guard let crf = Int(selectedTranscodeCRF), (0...51).contains(crf) else {
-            logs.append("\n\(self.ui("CRF 请输入 0-51 之间的整数", "Please enter an integer between 0 and 51 for CRF"))")
+            appendRawLog(self.ui("CRF 请输入 0-51 之间的整数", "Please enter an integer between 0 and 51 for CRF") + "\n")
+            return
+        }
+        let clipStart = selectedClipStartTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clipEnd = selectedClipEndTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        let startSeconds = try? parseEditTime(clipStart)
+        let endSeconds = try? parseEditTime(clipEnd)
+
+        if !clipStart.isEmpty && startSeconds == nil {
+            appendRawLog(self.ui("开始时间格式无效，请使用 HH:MM:SS 或 MM:SS", "Invalid start time. Use HH:MM:SS or MM:SS") + "\n")
+            return
+        }
+        if !clipEnd.isEmpty && endSeconds == nil {
+            appendRawLog(self.ui("结束时间格式无效，请使用 HH:MM:SS 或 MM:SS", "Invalid end time. Use HH:MM:SS or MM:SS") + "\n")
+            return
+        }
+        if let startSeconds, let endSeconds, endSeconds <= startSeconds {
+            appendRawLog(self.ui("结束时间必须大于开始时间", "End time must be greater than start time") + "\n")
             return
         }
 
-        runTask(kind: .transcodeVideo, startMessage: self.ui("开始视频转码", "Starting video transcode")) {
+        let isClipEdit = startSeconds != nil || endSeconds != nil
+        runTask(kind: .transcodeVideo, startMessage: isClipEdit ? self.ui("开始视频编辑", "Starting video edit") : self.ui("开始视频转码", "Starting video transcode")) {
             let inputURL = URL(fileURLWithPath: self.selectedTranscodeInputPath)
             let baseName = inputURL.deletingPathExtension().lastPathComponent
-            let outputPath = "\(self.resolveAppPath(self.settings.transcodeOutputDirectory))/\(baseName)_transcoded.\(self.selectedTranscodeFormat)"
+            let suffix = isClipEdit ? "_edited" : "_transcoded"
+            let outputPath = "\(self.resolveAppPath(self.settings.transcodeOutputDirectory))/\(baseName)\(suffix).\(self.selectedTranscodeFormat)"
             self.registerCleanupFile(outputPath)
 
             try await self.transcoder.transcode(
@@ -177,6 +213,8 @@ final class AppViewModel: ObservableObject {
                 outputPath: outputPath,
                 format: self.selectedTranscodeFormat,
                 crf: crf,
+                clipStartTime: startSeconds,
+                clipEndTime: endSeconds,
                 onOutput: { chunk in
                     Task { @MainActor in
                         self.appendRawLog(chunk)
@@ -196,13 +234,40 @@ final class AppViewModel: ObservableObject {
 
             self.unregisterCleanupFile(outputPath)
             self.taskProgress = 1
-            await self.log("\(self.ui("转码完成", "Transcode completed")): \(outputPath)")
+            await self.log("\(isClipEdit ? self.ui("视频编辑完成", "Video edit completed") : self.ui("转码完成", "Transcode completed")): \(outputPath)")
         }
+    }
+
+    private func parseEditTime(_ value: String) throws -> TimeInterval {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+
+        let parts = trimmed.split(separator: ":").map(String.init)
+        guard (2...3).contains(parts.count) else {
+            throw AppError.parseFailed("invalid time")
+        }
+
+        let secondsPart = parts.last ?? "0"
+        guard let seconds = Double(secondsPart) else {
+            throw AppError.parseFailed("invalid time")
+        }
+
+        if parts.count == 2 {
+            guard let minutes = Double(parts[0]) else {
+                throw AppError.parseFailed("invalid time")
+            }
+            return minutes * 60 + seconds
+        }
+
+        guard let hours = Double(parts[0]), let minutes = Double(parts[1]) else {
+            throw AppError.parseFailed("invalid time")
+        }
+        return hours * 3600 + minutes * 60 + seconds
     }
 
     func transcribeVideo() {
         guard !selectedVideoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n\(self.ui("请先选择视频文件", "Please choose a video file first"))")
+            appendRawLog(self.ui("请先选择视频文件", "Please choose a video file first") + "\n")
             return
         }
 
@@ -254,7 +319,7 @@ final class AppViewModel: ObservableObject {
 
     func translateSubtitle() {
         guard !selectedSubtitlePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logs.append("\n\(self.ui("请先选择字幕文件", "Please choose a subtitle file first"))")
+            appendRawLog(self.ui("请先选择字幕文件", "Please choose a subtitle file first") + "\n")
             return
         }
 
@@ -496,6 +561,27 @@ final class AppViewModel: ObservableObject {
         let ok4 = setRelativeDirectory(from: absolutePath, target: \.globalOutputDirectory)
         saveSettings()
         return ok1 && ok2 && ok3 && ok4
+    }
+
+    func clearAppCache() {
+        let cachePath = cacheStorageDirectory()
+        let fm = FileManager.default
+
+        do {
+            if fm.fileExists(atPath: cachePath) {
+                try fm.removeItem(atPath: cachePath)
+            }
+            try fm.createDirectory(atPath: cachePath, withIntermediateDirectories: true)
+            appendRawLog("[INFO] \(self.ui("缓存已清理", "Cache cleared")): \(cachePath)\n")
+            cacheResultTitle = self.ui("缓存已清理", "Cache Cleared")
+            cacheResultMessage = self.ui("应用缓存已清理完成。", "The app cache has been cleared.")
+            showCacheResultAlert = true
+        } catch {
+            appendRawLog("[WARN] \(self.ui("清理缓存失败", "Failed to clear cache")): \(localizedErrorMessage(error))\n")
+            cacheResultTitle = self.ui("清理缓存失败", "Cache Clear Failed")
+            cacheResultMessage = localizedErrorMessage(error)
+            showCacheResultAlert = true
+        }
     }
 
     private func modelStorageDirectory() -> String {
@@ -813,11 +899,33 @@ final class AppViewModel: ObservableObject {
     }
 
     private func appendRawLog(_ text: String) {
-        let normalized = text.replacingOccurrences(of: "\r", with: "\n")
-        if logs.isEmpty {
-            logs = normalized
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        let combined = rawLogCarryover + normalized
+        let parts = combined.components(separatedBy: "\n")
+        let endsWithNewline = combined.hasSuffix("\n")
+        let completeLines = endsWithNewline ? parts : Array(parts.dropLast())
+        rawLogCarryover = endsWithNewline ? "" : (parts.last ?? "")
+
+        for line in completeLines {
+            appendTimestampedLine(line)
+        }
+    }
+
+    private func appendTimestampedLine(_ line: String) {
+        let entry: String
+        if line.isEmpty {
+            entry = ""
         } else {
-            logs += normalized
+            entry = "[\(Self.timestampString())] \(line)"
+        }
+
+        if logs.isEmpty {
+            logs = entry
+        } else {
+            logs += "\n\(entry)"
         }
     }
 
