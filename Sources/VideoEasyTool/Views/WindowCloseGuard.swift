@@ -40,7 +40,7 @@ struct WindowCloseGuard: NSViewRepresentable {
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
-            guard viewModel.isRunning else { return true }
+            guard viewModel.shouldWarnBeforeClosingWindow else { return true }
 
             let alert = NSAlert()
             alert.messageText = viewModel.ui("任务正在运行", "Task is running")

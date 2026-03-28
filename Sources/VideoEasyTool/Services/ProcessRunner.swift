@@ -54,9 +54,12 @@ struct ProcessRunner {
     private static func streamOutput(from handle: FileHandle, onOutput: ((String) -> Void)?) async -> String {
         await Task.detached(priority: .utility) {
             var collected = ""
+            defer {
+                try? handle.close()
+            }
             while true {
-                let data = handle.availableData
-                if data.isEmpty { break }
+                let data = (try? handle.read(upToCount: 4096)) ?? nil
+                guard let data, !data.isEmpty else { break }
                 let text = String(decoding: data, as: UTF8.self)
                 collected += text
                 onOutput?(text)
