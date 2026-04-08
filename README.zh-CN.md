@@ -121,6 +121,12 @@ swift build -c release
 
 - 接口：`POST /api/chat`
 - 使用聊天 `messages` 请求格式
+- 应用会根据主流模型家族自动选择工作模式：
+  - 名称中包含 `qwen`、`llama`、`gemma`、`mistral`、`deepseek`、`gpt-oss` 等通用聊天家族关键字的模型，默认走批量 JSON 模式
+  - 名称中包含 `translate`、`translator` 等翻译导向关键字的模型，默认走单条文本翻译模式
+  - 名称中包含 `embed`、`embedding`、`bge`、`minilm`、`e5`、`mxbai-embed`、`nomic-embed` 等 embedding 关键字的模型，会被直接拦截，不允许用于字幕翻译
+  - 名称中包含 `vision`、`vl`、`multimodal` 等视觉关键字的模型，在纯文本字幕翻译场景下仍默认走批量 JSON 模式
+- 你仍然可以在应用里手动覆盖自动识别出来的工作模式
 
 ## 数据存储
 

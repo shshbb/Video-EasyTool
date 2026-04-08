@@ -121,6 +121,12 @@ Current packaged artifacts are written to:
 
 - Endpoint: `POST /api/chat`
 - Uses chat `messages` payloads
+- The app auto-selects a work mode based on common model families:
+  - Models with general-chat family keywords such as `qwen`, `llama`, `gemma`, `mistral`, `deepseek`, and `gpt-oss` use structured batch JSON mode by default
+  - Models with translation-oriented keywords such as `translate` or `translator` use single-text translation mode by default
+  - Models with embedding-oriented keywords such as `embed`, `embedding`, `bge`, `minilm`, `e5`, `mxbai-embed`, and `nomic-embed` are blocked for subtitle translation
+  - Models with vision-oriented keywords such as `vision`, `vl`, or `multimodal` still use structured batch mode for text subtitle translation
+- You can still override the detected work mode manually in the app
 
 ## Data Storage
 
