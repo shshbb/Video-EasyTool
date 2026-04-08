@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import NaturalLanguage
 
@@ -331,17 +332,62 @@ final class AppViewModel: ObservableObject {
                 self.translationTotalTokens = 0
             }
 
-            let cues = try self.subtitleService.parseSRT(path: self.selectedSubtitlePath)
+            let subtitlePath = self.selectedSubtitlePath
+            let cues = try self.subtitleService.parseSRT(path: subtitlePath)
+            let sourceDigest = try self.subtitleDigest(for: subtitlePath)
+            let batchSize = self.effectiveTranslationBatchSize()
+            let sessionPath = self.translationSessionPath(
+                sourceSubtitlePath: subtitlePath,
+                targetLanguageCode: self.settings.targetLanguage.code,
+                provider: self.settings.provider,
+                modelIdentifier: self.translationSessionModelIdentifier(settings: self.settings),
+                mode: self.settings.translationMode
+            )
+            var resumeSession = self.loadTranslationResumeSession(from: sessionPath)
+            let canResume = self.canResumeTranslation(
+                session: resumeSession,
+                sourceSubtitlePath: subtitlePath,
+                sourceDigest: sourceDigest,
+                targetLanguageCode: self.settings.targetLanguage.code,
+                provider: self.settings.provider,
+                modelIdentifier: self.translationSessionModelIdentifier(settings: self.settings),
+                mode: self.settings.translationMode,
+                totalCueCount: cues.count,
+                batchSize: batchSize
+            )
 
             let client = try OpenAICompatibleClient(baseURL: self.settings.openAIBaseURL, apiKey: self.settings.openAIAPIKey)
             let translator = try self.makeTranslator(settings: self.settings, client: client)
             let texts = cues.map(\.text)
-            let batchSize = self.effectiveTranslationBatchSize()
             let totalBatches = max(1, Int(ceil(Double(texts.count) / Double(batchSize))))
-            var translated: [String] = []
+            var translated: [String] = canResume ? (resumeSession?.translatedTexts ?? []) : []
+            let resumeBatchIndex = canResume ? min(resumeSession?.completedBatchCount ?? 0, totalBatches) : 0
+
+            if canResume, resumeBatchIndex > 0 {
+                await self.log("\(self.ui("检测到未完成翻译，已自动续翻", "Detected unfinished translation and resumed automatically")): \(resumeBatchIndex + 1)/\(totalBatches)")
+                await MainActor.run {
+                    self.taskProgress = totalBatches > 0 ? (Double(resumeBatchIndex) / Double(totalBatches)) * 0.95 : 0
+                }
+            } else {
+                resumeSession = TranslationResumeSession(
+                    sourceSubtitlePath: subtitlePath,
+                    sourceDigest: sourceDigest,
+                    targetLanguageCode: self.settings.targetLanguage.code,
+                    providerRawValue: self.settings.provider.rawValue,
+                    modelIdentifier: self.translationSessionModelIdentifier(settings: self.settings),
+                    modeRawValue: self.settings.translationMode.rawValue,
+                    translatedTexts: [],
+                    completedBatchCount: 0,
+                    totalCueCount: cues.count,
+                    batchSize: batchSize,
+                    updatedAt: Date()
+                )
+                try self.saveTranslationResumeSession(resumeSession!, to: sessionPath)
+            }
+
             await self.log("\(self.ui("翻译批次规划", "Translation batching")): \(totalBatches) \(self.ui("批，每批最多", "batches, up to")) \(batchSize) \(self.ui("条", "items"))")
 
-            for batchIndex in 0..<totalBatches {
+            for batchIndex in resumeBatchIndex..<totalBatches {
                 let start = batchIndex * batchSize
                 let end = min(start + batchSize, texts.count)
                 let batch = Array(texts[start..<end])
@@ -361,6 +407,13 @@ final class AppViewModel: ObservableObject {
                     totalBatches: totalBatches
                 )
                 translated.append(contentsOf: repaired)
+                if var session = resumeSession {
+                    session.translatedTexts = translated
+                    session.completedBatchCount = batchIndex + 1
+                    session.updatedAt = Date()
+                    resumeSession = session
+                    try self.saveTranslationResumeSession(session, to: sessionPath)
+                }
 
                 let ratio = Double(batchIndex + 1) / Double(totalBatches)
                 await MainActor.run {
@@ -380,11 +433,13 @@ final class AppViewModel: ObservableObject {
             self.registerCleanupFile(outputPath)
             try self.subtitleService.writeSRT(cues: bilingual, to: outputPath)
             self.unregisterCleanupFile(outputPath)
+            self.removeTranslationResumeSession(at: sessionPath)
 
             await MainActor.run {
                 self.taskProgress = 1
             }
             await self.log("\(self.ui("双语字幕已生成", "Bilingual subtitle generated")): \(outputPath)")
+            await self.log(self.ui("翻译断点缓存已清理", "Translation resume cache cleared"))
         }
     }
 
@@ -592,6 +647,10 @@ final class AppViewModel: ObservableObject {
         resolveAppPath("cache")
     }
 
+    private func translationSessionStorageDirectory() -> String {
+        resolveAppPath("cache/translation-sessions")
+    }
+
     private func createTaskCacheDirectory(prefix: String) throws -> String {
         let base = cacheStorageDirectory()
         let fm = FileManager.default
@@ -646,7 +705,8 @@ final class AppViewModel: ObservableObject {
             settings.transcribeOutputDirectory,
             settings.translateOutputDirectory,
             "models/whisper",
-            "cache"
+            "cache",
+            "cache/translation-sessions"
         ] {
             let abs = resolveAppPath(rel)
             try? fm.createDirectory(atPath: abs, withIntermediateDirectories: true)
@@ -744,10 +804,12 @@ final class AppViewModel: ObservableObject {
                 }
             )
         case .ollama:
+            let resolvedMode = resolvedOllamaWorkMode(settings: settings)
             return try OllamaTranslator(
                 baseURL: settings.ollamaBaseURL,
                 model: settings.ollamaModel,
-                temperature: settings.translationTemperature
+                temperature: settings.translationTemperature,
+                workMode: resolvedMode
             )
         }
     }
@@ -776,6 +838,7 @@ final class AppViewModel: ObservableObject {
     func resetTranslationAdvancedSettings() {
         settings.translationTemperature = 0.1
         settings.useCustomTranslationBatchSize = false
+        settings.ollamaWorkMode = .automatic
         settings.customTranslationBatchSize = recommendedTranslationBatchSize(
             provider: settings.provider,
             mode: settings.translationMode,
@@ -826,6 +889,151 @@ final class AppViewModel: ObservableObject {
         guard startIndex > 0 else { return [] }
         let contextStart = max(0, startIndex - 2)
         return Array(texts[contextStart..<startIndex])
+    }
+
+    func resolvedOllamaWorkMode(settings: AppSettings? = nil) -> OllamaResolvedWorkMode {
+        let current = settings ?? self.settings
+        return OllamaModelRules.resolve(modelName: current.ollamaModel, userPreference: current.ollamaWorkMode)
+    }
+
+    func ollamaWorkModeLabel() -> String {
+        switch resolvedOllamaWorkMode() {
+        case .structuredJSON:
+            return ui("批量 JSON", "Structured JSON")
+        case .singleText:
+            return ui("单条文本", "Single Text")
+        case .unsupported:
+            return ui("不支持", "Unsupported")
+        }
+    }
+
+    func ollamaModelCategoryLabel() -> String {
+        guard let rule = OllamaModelRules.matchedRule(for: settings.ollamaModel) else {
+            return ui("未识别", "Unclassified")
+        }
+
+        switch rule.category {
+        case .generalChat:
+            return ui("通用聊天", "General Chat")
+        case .translation:
+            return ui("翻译专用", "Translation")
+        case .embedding:
+            return ui("Embedding", "Embedding")
+        case .vision:
+            return ui("视觉", "Vision")
+        }
+    }
+
+    func ollamaMatchedKeywordsLabel() -> String {
+        let keywords = OllamaModelRules.matchedKeywords(for: settings.ollamaModel)
+        guard !keywords.isEmpty else {
+            return ui("无", "None")
+        }
+        return keywords.joined(separator: ", ")
+    }
+
+    func ollamaModelRuleDescription() -> String {
+        guard let rule = OllamaModelRules.matchedRule(for: settings.ollamaModel) else {
+            return ui("未命中预设规则，默认使用批量 JSON 模式。", "No preset rule matched. Using structured batch mode by default.")
+        }
+
+        switch rule.mode {
+        case .structuredJSON:
+            return ui("识别为通用聊天模型，默认走批量 JSON 翻译。", "Detected as a general chat model. Structured batch translation is used by default.")
+        case .singleText:
+            return ui("识别为专用翻译模型，默认走单条文本翻译。", "Detected as a dedicated translation model. Single-text translation is used by default.")
+        case .unsupported(let reason):
+            return ui("识别为不适合字幕翻译的模型：", "Detected as a model that is not suitable for subtitle translation: ") + reason
+        }
+    }
+
+    private func subtitleDigest(for path: String) throws -> String {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func translationSessionModelIdentifier(settings: AppSettings) -> String {
+        switch settings.provider {
+        case .openAICompatible:
+            return "openai:\(settings.translationModel)"
+        case .ollama:
+            return "ollama:\(settings.ollamaModel)#\(ollamaSessionModeKey(for: settings))"
+        }
+    }
+
+    private func ollamaSessionModeKey(for settings: AppSettings) -> String {
+        switch resolvedOllamaWorkMode(settings: settings) {
+        case .structuredJSON:
+            return "structured-json"
+        case .singleText:
+            return "single-text"
+        case .unsupported:
+            return "unsupported"
+        }
+    }
+
+    private func translationSessionPath(
+        sourceSubtitlePath: String,
+        targetLanguageCode: String,
+        provider: TranslationProvider,
+        modelIdentifier: String,
+        mode: TranslationMode
+    ) -> String {
+        let key = [
+            sourceSubtitlePath,
+            targetLanguageCode,
+            provider.rawValue,
+            modelIdentifier,
+            mode.rawValue
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "\(translationSessionStorageDirectory())/\(digest).json"
+    }
+
+    private func loadTranslationResumeSession(from path: String) -> TranslationResumeSession? {
+        guard FileManager.default.fileExists(atPath: path),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(TranslationResumeSession.self, from: data)
+    }
+
+    private func saveTranslationResumeSession(_ session: TranslationResumeSession, to path: String) throws {
+        let dir = translationSessionStorageDirectory()
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(session)
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+
+    private func removeTranslationResumeSession(at path: String) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    private func canResumeTranslation(
+        session: TranslationResumeSession?,
+        sourceSubtitlePath: String,
+        sourceDigest: String,
+        targetLanguageCode: String,
+        provider: TranslationProvider,
+        modelIdentifier: String,
+        mode: TranslationMode,
+        totalCueCount: Int,
+        batchSize: Int
+    ) -> Bool {
+        guard let session else { return false }
+        guard session.sourceSubtitlePath == sourceSubtitlePath else { return false }
+        guard session.sourceDigest == sourceDigest else { return false }
+        guard session.targetLanguageCode == targetLanguageCode else { return false }
+        guard session.providerRawValue == provider.rawValue else { return false }
+        guard session.modelIdentifier == modelIdentifier else { return false }
+        guard session.modeRawValue == mode.rawValue else { return false }
+        guard session.totalCueCount == totalCueCount else { return false }
+        guard session.batchSize == batchSize else { return false }
+        guard !session.translatedTexts.isEmpty else { return false }
+        guard session.translatedTexts.count <= totalCueCount else { return false }
+        return true
     }
 
     var translationTokenUsageText: String {

@@ -35,6 +35,14 @@ enum DisplayLanguage: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum OllamaWorkMode: String, CaseIterable, Identifiable, Codable {
+    case automatic = "自动"
+    case structuredJSON = "批量 JSON"
+    case singleText = "单条文本"
+
+    var id: String { rawValue }
+}
+
 enum TaskKind: String, Equatable {
     case downloadVideo
     case transcodeVideo
@@ -113,6 +121,7 @@ struct AppSettings: Codable {
     var translationModel: String
     var ollamaBaseURL: String
     var ollamaModel: String
+    var ollamaWorkMode: OllamaWorkMode
     var targetLanguage: TargetLanguage
     var provider: TranslationProvider
     var translationMode: TranslationMode
@@ -134,6 +143,7 @@ struct AppSettings: Codable {
         case translationModel
         case ollamaBaseURL
         case ollamaModel
+        case ollamaWorkMode
         case targetLanguage
         case provider
         case translationMode
@@ -155,6 +165,7 @@ struct AppSettings: Codable {
         translationModel: String,
         ollamaBaseURL: String,
         ollamaModel: String,
+        ollamaWorkMode: OllamaWorkMode,
         targetLanguage: TargetLanguage,
         provider: TranslationProvider,
         translationMode: TranslationMode,
@@ -174,6 +185,7 @@ struct AppSettings: Codable {
         self.translationModel = translationModel
         self.ollamaBaseURL = ollamaBaseURL
         self.ollamaModel = ollamaModel
+        self.ollamaWorkMode = ollamaWorkMode
         self.targetLanguage = targetLanguage
         self.provider = provider
         self.translationMode = translationMode
@@ -197,6 +209,7 @@ struct AppSettings: Codable {
         self.translationModel = try container.decodeIfPresent(String.self, forKey: .translationModel) ?? AppSettings.default.translationModel
         self.ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? AppSettings.default.ollamaBaseURL
         self.ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? AppSettings.default.ollamaModel
+        self.ollamaWorkMode = try container.decodeIfPresent(OllamaWorkMode.self, forKey: .ollamaWorkMode) ?? AppSettings.default.ollamaWorkMode
         self.provider = try container.decodeIfPresent(TranslationProvider.self, forKey: .provider) ?? AppSettings.default.provider
         self.translationMode = try container.decodeIfPresent(TranslationMode.self, forKey: .translationMode) ?? .balanced
         self.translationTemperature = try container.decodeIfPresent(Double.self, forKey: .translationTemperature) ?? AppSettings.default.translationTemperature
@@ -236,6 +249,7 @@ struct AppSettings: Codable {
         try container.encode(translationModel, forKey: .translationModel)
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
         try container.encode(ollamaModel, forKey: .ollamaModel)
+        try container.encode(ollamaWorkMode, forKey: .ollamaWorkMode)
         try container.encode(targetLanguage, forKey: .targetLanguage)
         try container.encode(provider, forKey: .provider)
         try container.encode(translationMode, forKey: .translationMode)
@@ -257,6 +271,7 @@ struct AppSettings: Codable {
         translationModel: "gpt-4o-mini",
         ollamaBaseURL: "http://127.0.0.1:11434",
         ollamaModel: "qwen2.5:7b",
+        ollamaWorkMode: .automatic,
         targetLanguage: .simplifiedChinese,
         provider: .openAICompatible,
         translationMode: .balanced,
@@ -265,6 +280,20 @@ struct AppSettings: Codable {
         customTranslationBatchSize: 12,
         displayLanguage: .systemDefault
     )
+}
+
+struct TranslationResumeSession: Codable {
+    var sourceSubtitlePath: String
+    var sourceDigest: String
+    var targetLanguageCode: String
+    var providerRawValue: String
+    var modelIdentifier: String
+    var modeRawValue: String
+    var translatedTexts: [String]
+    var completedBatchCount: Int
+    var totalCueCount: Int
+    var batchSize: Int
+    var updatedAt: Date
 }
 
 struct SubtitleCue: Identifiable {

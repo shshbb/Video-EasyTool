@@ -44,17 +44,19 @@ struct ContentView: View {
             NavigationSplitView {
                 sidebar
             } detail: {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if vm.isRunning {
-                            progressView
+                GeometryReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            if vm.isRunning {
+                                progressView
+                            }
+                            detailView(for: selectedSection ?? .download, availableHeight: proxy.size.height)
                         }
-                        detailView(for: selectedSection ?? .download)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(Color.clear)
                 }
-                .background(Color.clear)
             }
         }
         .background(WindowCloseGuard(viewModel: vm))
@@ -115,18 +117,18 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func detailView(for section: SidebarSection) -> some View {
+    private func detailView(for section: SidebarSection, availableHeight: CGFloat) -> some View {
         switch section {
         case .download:
-            downloadView
+            downloadView(availableHeight: availableHeight)
         case .transcode:
-            transcodeView
+            transcodeView(availableHeight: availableHeight)
         case .transcribe:
-            transcribeView
+            transcribeView(availableHeight: availableHeight)
         case .translate:
-            translateView
+            translateView(availableHeight: availableHeight)
         case .logs:
-            logsView
+            logsView(availableHeight: availableHeight)
         case .settings:
             settingsView
         }
@@ -201,7 +203,7 @@ struct ContentView: View {
         }
     }
 
-    private var downloadView: some View {
+    private func downloadView(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("下载视频", "Download Video"),
@@ -258,12 +260,15 @@ struct ContentView: View {
                     }
                 }
             }
-
-            logCard(title: ui("下载日志", "Download Logs"), minHeight: 220)
+            logCard(
+                title: ui("下载日志", "Download Logs"),
+                minHeight: 220,
+                preferredHeight: max(220, availableHeight * 0.34)
+            )
         }
     }
 
-    private var transcribeView: some View {
+    private func transcribeView(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("转录字幕", "Transcribe Subtitle"),
@@ -381,10 +386,16 @@ struct ContentView: View {
                     }
                 }
             }
+
+            logCard(
+                title: ui("转录日志", "Transcription Logs"),
+                minHeight: 240,
+                preferredHeight: max(240, availableHeight * 0.36)
+            )
         }
     }
 
-    private var transcodeView: some View {
+    private func transcodeView(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("视频编辑", "Video Edit"),
@@ -473,10 +484,16 @@ struct ContentView: View {
                     }
                 }
             }
+
+            logCard(
+                title: ui("编辑日志", "Editing Logs"),
+                minHeight: 240,
+                preferredHeight: max(240, availableHeight * 0.36)
+            )
         }
     }
 
-    private var translateView: some View {
+    private func translateView(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("翻译字幕", "Translate Subtitle"),
@@ -550,6 +567,15 @@ struct ContentView: View {
                         formRow(ui("Ollama 模型", "Ollama Model")) {
                             TextField("qwen2.5:7b", text: $vm.settings.ollamaModel)
                                 .textFieldStyle(.roundedBorder)
+                        }
+                        formRow(ui("工作模式", "Work Mode")) {
+                            Picker("Ollama Work Mode", selection: $vm.settings.ollamaWorkMode) {
+                                Text(ui("自动", "Automatic")).tag(OllamaWorkMode.automatic)
+                                Text(ui("批量 JSON", "Structured JSON")).tag(OllamaWorkMode.structuredJSON)
+                                Text(ui("单条文本", "Single Text")).tag(OllamaWorkMode.singleText)
+                            }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
 
@@ -632,6 +658,32 @@ struct ContentView: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                     }
                                 }
+
+                                if vm.settings.provider == .ollama {
+                                    formRow(ui("模型规则", "Model Rule")) {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack(spacing: 10) {
+                                                statusPill(
+                                                    title: ui("模型类别", "Category"),
+                                                    value: vm.ollamaModelCategoryLabel()
+                                                )
+                                                statusPill(
+                                                    title: ui("当前模式", "Active Mode"),
+                                                    value: vm.ollamaWorkModeLabel()
+                                                )
+                                            }
+
+                                            Text("\(vm.ui("命中关键字", "Matched Keywords")): \(vm.ollamaMatchedKeywordsLabel())")
+                                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.secondary)
+
+                                            Text(vm.ollamaModelRuleDescription())
+                                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -681,18 +733,27 @@ struct ContentView: View {
                     }
                 }
             }
+
+            logCard(
+                title: ui("翻译日志", "Translation Logs"),
+                minHeight: 240,
+                preferredHeight: max(240, availableHeight * 0.36)
+            )
         }
     }
 
-    private var logsView: some View {
+    private func logsView(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader(
                 title: ui("运行日志", "Runtime Logs"),
                 subtitle: ui("查看任务输出、错误信息和依赖检测结果。", "Inspect task output, errors, and dependency checks in one place."),
                 symbol: "text.justify.left"
             )
-
-            logCard(title: ui("全部日志", "All Logs"), minHeight: 480)
+            logCard(
+                title: ui("全部日志", "All Logs"),
+                minHeight: 480,
+                preferredHeight: max(480, availableHeight * 0.72)
+            )
         }
     }
 
@@ -776,13 +837,13 @@ struct ContentView: View {
         )
     }
 
-    private func logCard(title: String, minHeight: CGFloat) -> some View {
+    private func logCard(title: String, minHeight: CGFloat, preferredHeight: CGFloat? = nil) -> some View {
         card {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                 LogTextView(text: vm.logs.isEmpty ? ui("等待执行", "Waiting") : vm.logs)
-                    .frame(minHeight: minHeight)
+                    .frame(minHeight: minHeight, idealHeight: preferredHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }

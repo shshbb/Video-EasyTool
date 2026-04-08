@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 protocol TranslationService {
     func translateBatch(_ sourceTexts: [String], targetLanguage: String, contextHint: [String]) async throws -> [String]
@@ -326,15 +327,17 @@ final class OllamaTranslator: TranslationService {
     private let baseURL: URL
     private let model: String
     private let temperature: Double
+    private let workMode: OllamaResolvedWorkMode
     private let session: URLSession
 
-    init(baseURL: String, model: String, temperature: Double) throws {
+    init(baseURL: String, model: String, temperature: Double, workMode: OllamaResolvedWorkMode) throws {
         guard let url = URL(string: baseURL) else {
             throw AppError.invalidResponse("Ollama baseURL 无效: \(baseURL)")
         }
         self.baseURL = url
         self.model = model
         self.temperature = temperature
+        self.workMode = workMode
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 1800
         config.timeoutIntervalForResource = 7200
@@ -342,7 +345,76 @@ final class OllamaTranslator: TranslationService {
     }
 
     func translateBatch(_ sourceTexts: [String], targetLanguage: String, contextHint: [String] = []) async throws -> [String] {
-        try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint, depth: 0)
+        switch workMode {
+        case .structuredJSON:
+            return try await translateBatchAdaptive(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint, depth: 0)
+        case .singleText:
+            return try await translateItemsIndividually(sourceTexts, targetLanguage: targetLanguage, contextHint: contextHint)
+        case .unsupported(let reason):
+            throw AppError.invalidResponse(reason)
+        }
+    }
+
+    private func translateItemsIndividually(_ sourceTexts: [String], targetLanguage: String, contextHint: [String]) async throws -> [String] {
+        var outputs: [String] = []
+        outputs.reserveCapacity(sourceTexts.count)
+
+        for (index, text) in sourceTexts.enumerated() {
+            let prior = Array(sourceTexts.prefix(index))
+            let localContext = Array((contextHint + prior).suffix(2))
+            let translated = try await translateSingleText(text, targetLanguage: targetLanguage, contextHint: localContext)
+            outputs.append(translated)
+        }
+
+        return outputs
+    }
+
+    private func translateSingleText(_ sourceText: String, targetLanguage: String, contextHint: [String]) async throws -> String {
+        let sourceLanguage = detectSourceLanguageName(from: sourceText)
+        let targetLanguageName = targetLanguageDisplayName(for: targetLanguage)
+        let contextBlock = buildContextBlock(from: contextHint)
+
+        let prompt = """
+        You are a professional \(sourceLanguage) to \(targetLanguageName) subtitle translator.
+        Translate the following subtitle text into \(targetLanguageName).
+        Return only the translated text.
+        No JSON.
+        No markdown.
+        No explanations.
+        No quotes.
+        Preserve proper nouns, code, product names, URLs, and obvious brand names only when necessary, but the surrounding sentence must still be in \(targetLanguageName).
+        \(contextBlock)
+
+        Text:
+        \(sourceText)
+        """
+
+        let payload: [String: Any] = [
+            "model": model,
+            "stream": true,
+            "keep_alive": "0s",
+            "options": [
+                "temperature": temperature
+            ],
+            "messages": [
+                ["role": "user", "content": prompt]
+            ]
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let url = baseURL.appendingPathComponent("api/chat")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 86_400
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+
+        let content = try await streamChatContent(request: request)
+        let cleaned = normalizeSingleTranslation(stripThinkBlocks(in: content))
+        guard !cleaned.isEmpty else {
+            throw AppError.parseFailed("Ollama 返回为空")
+        }
+        return cleaned
     }
 
     private func translateBatchAdaptive(_ sourceTexts: [String], targetLanguage: String, contextHint: [String], depth: Int) async throws -> [String] {
@@ -443,6 +515,36 @@ final class OllamaTranslator: TranslationService {
             return "German."
         case "es":
             return "Spanish."
+        default:
+            return code
+        }
+    }
+
+    private func detectSourceLanguageName(from text: String) -> String {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let code = recognizer.dominantLanguage?.rawValue ?? "auto"
+        return targetLanguageDisplayName(for: code)
+    }
+
+    private func targetLanguageDisplayName(for code: String) -> String {
+        switch code.lowercased() {
+        case "zh-cn", "zh-hans", "zh":
+            return "Simplified Chinese"
+        case "zh-tw", "zh-hant":
+            return "Traditional Chinese"
+        case "en":
+            return "English"
+        case "ja":
+            return "Japanese"
+        case "ko":
+            return "Korean"
+        case "fr":
+            return "French"
+        case "de":
+            return "German"
+        case "es":
+            return "Spanish"
         default:
             return code
         }
